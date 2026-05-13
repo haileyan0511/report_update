@@ -26,24 +26,28 @@ except Exception:
 def get_account_name(account_id):
     engine = get_engine()
     
-    query = f"""
+    query = """
         SELECT ci.brand_name
-        
         FROM ad_accounts aa
         JOIN business_portfolios bp ON aa.business_portfolio_id = bp.id
         JOIN clients cl ON bp.client_id = cl.id
         JOIN client_info ci ON cl.id = ci.client_id
-        
-        WHERE aa.id = {account_id}
+        WHERE aa.id = %(account_id)s
         LIMIT 1
     """
     
-    df = pd.read_sql(query, engine)
+    df = pd.read_sql(query, engine, params={"account_id": account_id})
     
-    if not df.empty:
-        return df.iloc[0]['brand_name']
+    if df.empty:
+        return account_id
     
-    return account_id
+    brand_name = df.iloc[0]['brand_name']
+    
+    # text[] → 문자열 처리
+    if isinstance(brand_name, list):
+        return brand_name[0] if brand_name else account_id
+    
+    return brand_name
 
 # ----------------------------------
 
