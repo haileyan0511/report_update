@@ -1,8 +1,15 @@
+# visualizer_test.py 맨 위쪽에 추가!
+import warnings
+import logging
+warnings.filterwarnings("ignore", category=UserWarning)
+logging.getLogger('matplotlib.font_manager').setLevel(logging.CRITICAL)
+
 # scripts/visualizer.py
 import io
 import os
 import colorsys
 from typing import Any, Dict, List, Optional
+
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
@@ -23,10 +30,11 @@ plt.rcParams["figure.max_open_warning"] = 100
 DEFAULT_THEME = "#4e73df"
 
 
+
 def _configure_matplotlib_fonts() -> None:
     # Prefer Korean-capable fonts to avoid broken glyphs in SVG.
     preferred = [
-        #"Apple SD Gothic Neo",
+        "Apple SD Gothic Neo",
         "Noto Sans KR",
         "Malgun Gothic",
         #"Arial Unicode MS",
@@ -266,6 +274,16 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
     if not labels or not series or len(labels) <= 1:
         return ""
 
+    # =========================================================
+    # 💡 [핵심 해결책] main.py에서 전달이 안 되는 스위치를 여기서 강제로 켭니다!
+    title_text = str(dataset.get("title") or "").strip()
+    show_average = dataset.get("show_average", False)
+    
+    # 이 3개의 차트는 무조건 평균선을 그리도록 강제 설정
+    if title_text in ["주별 CTR 추이", "오가닉 조회수 추이 (주별)", "프로필 방문 수(주별)"]:
+        show_average = True
+    # =========================================================
+
     x = list(range(len(labels)))
     fig, ax = plt.subplots(figsize=(8.0, 4.4))
 
@@ -273,8 +291,6 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
     plotted_values: List[float] = []
     show_legend = bool(dataset.get("show_legend"))
 
-    # 제목용 라벨 계산
-    title_text = str(dataset.get("title") or "").strip()
     chart_label = "주별" if "주별" in title_text else "월별" if "월별" in title_text else None
 
     label_map = {
@@ -337,72 +353,47 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
             if x_val not in label_idx_set:
                 continue
 
-            # ===== 라벨 겹침 방지 =====
             if last_labeled_x is not None and last_labeled_y is not None:
                 x_gap = abs(x_val - last_labeled_x)
                 y_gap = abs(y_num - last_labeled_y)
 
                 if x_gap <= 2 and y_gap < series_y_span * 0.12:
                     continue
-            
 
-            # 광고비/매출 첫 값 겹침 방지
-            for idx, (x_val, y_num) in enumerate(zip(x_values, data)):
-                if pd.isna(y_num):
-                    continue
+            base_offset = 6
+            va = "bottom"
 
-                y_num = float(y_num)
-                plotted_values.append(y_num)
-                if x_val not in label_idx_set:
-                    continue
-
-                # 기본값
-                if show_legend:
-                    if series_name == "spend":
-                        base_offset = 6
-                        va = "bottom"
-                    elif series_name == "revenue":
-                        base_offset = 6
-                        va = "bottom"
-                    else:
-                        base_offset = 6
-                        va = "bottom"
-                else:
+            if idx == 0 and show_legend:
+                if series_name == "spend":
                     base_offset = 6
                     va = "bottom"
+                elif series_name == "revenue":
+                    base_offset = 17
+                    va = "bottom"
 
-                # 첫 번째 값만 강제 위치
-                if idx == 0:
-                    if series_name == "spend":
-                        base_offset = 6   # 광고비는 아래
-                        va = "bottom"
-                    elif series_name == "revenue":
-                        base_offset = 17    # 매출은 위
-                        va = "bottom"
+            xytext = (0, base_offset)
+            ha = "center"
 
-                xytext = (0, base_offset)
-                ha = "center"
+            ax.annotate(
+                f"{_format_chart_value(y_num)}{unit}" if unit else _format_chart_value(y_num),
+                (x_val, y_num),
+                textcoords="offset points",
+                xytext=xytext,
+                ha=ha,
+                va=va,
+                fontsize=8,
+                color=color,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="round,pad=0.15",
+                    facecolor="white",
+                    edgecolor="none",
+                    alpha=0.85
+                ),
+            )
 
-                ax.annotate(
-                    f"{_format_chart_value(y_num)}{unit}" if unit else _format_chart_value(y_num),
-                    (x_val, y_num),
-                    textcoords="offset points",
-                    xytext=xytext,
-                    ha=ha,
-                    va=va,
-                    fontsize=8,
-                    color=color,
-                    clip_on=False,
-                    bbox=dict(
-                        boxstyle="round,pad=0.15",
-                        facecolor="white",
-                        edgecolor="none",
-                        alpha=0.85
-                    ),
-                )
-
-                last_labeled_x = x_val
-                last_labeled_y = y_num
+            last_labeled_x = x_val
+            last_labeled_y = y_num
             
     if not plotted_values:
         return ""
@@ -466,9 +457,7 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
                 zorder=1.5,
             )
 
-    # 스타일
     ax.set_xticks([])
-
     ax.yaxis.set_major_formatter(
         FuncFormatter(
             lambda v, _: f"{int(round(v)):,}" if abs(v - round(v)) < 1e-9 else f"{v:,.2f}"
@@ -478,7 +467,6 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
     _style_axes(ax, color_map, grid_axis=None)
     ax.tick_params(axis="x", length=0, labelbottom=False)
 
-    # 제목
     if chart_label:
         ax.set_title(
             chart_label,
@@ -489,7 +477,6 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
             y=1.08
         )
 
-    # 범례
     if show_legend:
         ax.legend(
             loc="upper right",
@@ -499,7 +486,30 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
             fontsize=9,
         )
 
-    # 위치 조정
+    # ================= [최종 평균선 그리기] =================
+    if show_average:
+        all_vals = [float(v) for s in series for v in (s.get("data") or []) if pd.notna(v)]
+        if all_vals:
+            avg_val = sum(all_vals) / len(all_vals)
+            
+            # 1. 점선 그리기 (얌전한 회색)
+            ax.axhline(y=avg_val, color="#8c8c89", linestyle="--", linewidth=1.5, zorder=999)
+            
+            # 2. 텍스트 라벨 (왼쪽 고정, 회색 글씨)
+            ax.text(
+                x=0.02, 
+                y=avg_val,
+                s=f"평균: {avg_val:,.1f}{unit}",
+                color="#5d5d5b",
+                fontsize=10,
+                fontweight="bold",
+                ha="left", va="bottom",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.9, pad=3),
+                zorder=1000,
+                transform=ax.get_yaxis_transform()
+            )
+    # =======================================================
+
     return _fig_to_svg(fig)
 
 def render_bar_h_chart(
@@ -821,6 +831,175 @@ def render_content_card(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> L
     return rendered
 
 
+def render_reaction_card(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not dataset:
+        return []
+
+    items = dataset.get("items") or []
+    rendered = []
+
+    for item in items:
+        new_item = dict(item)
+        details = item.get("target_details") or []
+        chart_svg = ""
+
+        # render_content_card와 동일한 연령/성별 CTR 차트
+        if details:
+            detail_df = pd.DataFrame(details)
+            if (
+                not detail_df.empty
+                and {"age", "gender", "ctr"}.issubset(detail_df.columns)
+            ):
+                detail_df["gender"] = detail_df["gender"].astype(str).str.strip()
+                detail_df = detail_df[detail_df["gender"].str.lower() != "unknown"]
+                detail_df["ctr"] = pd.to_numeric(detail_df["ctr"], errors="coerce")
+                detail_df = detail_df.dropna(subset=["ctr"])
+                detail_df = detail_df[detail_df["ctr"] > 0]
+
+                if not detail_df.empty:
+                    detail_df = detail_df.sort_values("ctr", ascending=False).head(6)
+                    labels = []
+                    for _, row in detail_df.iterrows():
+                        age_text = str(row["age"]).strip()
+                        gender_text = "여성" if row["gender"].lower() == "female" else "남성"
+                        labels.append(f"{age_text}<br>{gender_text}")
+                    values = detail_df["ctr"].tolist()
+                    mini_ds = {
+                        "kind": "bar_v",
+                        "labels": labels,
+                        "series": [{"name": "ctr", "data": values}],
+                        "unit": "%",
+                    }
+                    chart_svg = render_bar_v_chart(
+                        mini_ds, color_map,
+                        compact=True, show_labels=True, show_values=True,
+                    )
+
+        new_item["chart"] = chart_svg
+        new_item["has_chart"] = bool(chart_svg)
+        new_item["reaction_summary"] = {
+            "likes":  int(item.get("total_likes",  0) or 0),
+            "saves":  int(item.get("total_saves",  0) or 0),
+            "shares": int(item.get("total_shares", 0) or 0),
+            "total":  int(item.get("total_reaction", 0) or 0),
+            "ctr":    float(item.get("ctr", 0) or 0),
+        }
+        rendered.append(new_item)
+
+    return rendered
+
+
+
+def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> str:
+    """타겟(연령×성별) 광고비 비중 버블 그리드.
+    색상: 메인타겟=초록 / 기피타겟=빨강 / 중간=노랑. 원 크기=spend 비중."""
+    from matplotlib.patches import Patch
+
+    rows = dataset.get("rows") or []
+    if not rows:
+        return ""
+
+    main_age    = dataset.get("main_age")
+    main_gender = dataset.get("main_gender")
+    avoid_age   = dataset.get("avoid_age")
+    avoid_gender= dataset.get("avoid_gender")
+
+    df = pd.DataFrame(rows)
+    df["spend_ratio"] = pd.to_numeric(df["spend_ratio"], errors="coerce").fillna(0)
+    df["cpc"]         = pd.to_numeric(df["cpc"],         errors="coerce").fillna(0)
+
+    age_order = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+    ages    = [a for a in age_order if a in df["age_range"].values]
+    genders = ["female", "male"]
+    gender_labels = {"female": "여성", "male": "남성"}
+
+    def _norm(val):
+        if val is None: return []
+        if isinstance(val, (list, tuple)):
+            return [str(v).strip().lower() for v in val if v]
+        s = str(val).strip().lower()
+        return [s] if s else []
+
+    def _map_g(g):
+        g = g.lower()
+        return "female" if g in ("f", "여성", "female") else \
+               "male"   if g in ("m", "남성", "male")   else g
+
+    main_ages_n    = _norm(main_age)
+    main_genders_n = [_map_g(g) for g in _norm(main_gender)]
+    avoid_ages_n   = _norm(avoid_age)
+    avoid_genders_n= [_map_g(g) for g in _norm(avoid_gender)]
+
+    def cell_color(age, gender):
+        a, g = age.lower(), gender.lower()
+        is_main  = (not main_ages_n  or a in main_ages_n)  and \
+                   (not main_genders_n or g in main_genders_n)
+        is_avoid = bool(avoid_ages_n)    and a in avoid_ages_n and \
+                   bool(avoid_genders_n) and g in avoid_genders_n
+        if is_main:  return "#a8d5b5"
+        if is_avoid: return "#f4a5a5"
+        return "#f5e6a3"
+
+    n_ages = len(ages)
+    fig_w  = max(9, n_ages * 1.8)
+    fig, ax = plt.subplots(figsize=(fig_w, 5))
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
+
+    max_ratio = df["spend_ratio"].max() or 1
+    BASE = 5000
+
+    for j, age in enumerate(ages):
+        for i, gender in enumerate(genders):
+            # 빈 셀 placeholder
+            ax.scatter(j, -i, s=BASE * 0.12, c="#eeeeee",
+                       edgecolors="#cccccc", linewidth=0.7, zorder=1)
+
+            row = df[(df["age_range"] == age) & (df["gender"] == gender)]
+            if row.empty:
+                continue
+
+            ratio = float(row["spend_ratio"].iloc[0])
+            cpc   = float(row["cpc"].iloc[0])
+            size  = BASE * (ratio / max_ratio) * 0.85 + BASE * 0.1
+            color = cell_color(age, gender)
+
+            ax.scatter(j, -i, s=size, c=color,
+                       edgecolors="#888", linewidth=0.8, alpha=0.88, zorder=2)
+            ax.text(j, -i + 0.17, f"{ratio:.1f}%",
+                    ha="center", va="center",
+                    fontsize=10, fontweight="bold", color="#333", zorder=3)
+            ax.text(j, -i - 0.17, f"{int(cpc):,}원",
+                    ha="center", va="center",
+                    fontsize=8, color="#555", zorder=3)
+
+    ax.set_xticks(range(n_ages))
+    ax.set_xticklabels(ages, fontsize=11)
+    ax.xaxis.set_ticks_position("top")
+    ax.xaxis.set_label_position("top")
+    ax.set_yticks([0, -1])
+    ax.set_yticklabels([gender_labels.get(g, g) for g in genders], fontsize=11)
+    ax.set_xlim(-0.7, n_ages - 0.3)
+    ax.set_ylim(-1.65, 0.65)
+
+    legend_els = [
+        Patch(facecolor="#a8d5b5", edgecolor="#888", label="메인 타겟"),
+        Patch(facecolor="#f5e6a3", edgecolor="#888", label="중간"),
+        Patch(facecolor="#f4a5a5", edgecolor="#888", label="기피 타겟"),
+    ]
+    ax.legend(handles=legend_els, loc="lower right",
+              fontsize=9, framealpha=0.85,
+              bbox_to_anchor=(1.0, -0.08))
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(length=0)
+
+    plt.tight_layout()
+    return _fig_to_svg(fig)
+
+
+
 def render_dataset(dataset: Dict[str, Any], color_map: Dict[str, Any], **kwargs):
     if not dataset:
         return ""
@@ -833,6 +1012,8 @@ def render_dataset(dataset: Dict[str, Any], color_map: Dict[str, Any], **kwargs)
         "bubble": render_bubble_chart,
         "table": render_table_chart,
         "content_card": render_content_card,
+        "reaction_card": render_reaction_card,        # ← 추가
+        "target_bubble":  render_target_spend_bubble, # ← 추가
     }
 
     renderer = renderers.get(kind)

@@ -1,4 +1,5 @@
 import json
+import os
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -8,7 +9,7 @@ from scripts.processor import (
     get_account_name, get_active_ad_count, get_total_content_count,
     get_ad_period, get_content_period, get_total_keyword_count,
     get_instagram_followers, get_ctr_data, get_ctr_monthly_data, get_organic_data, get_organic_monthly_data, get_imp_threshold,
-    get_content_ctr_data, get_a_content_target_ctr_data, get_profile_visits_monthly,
+    get_content_ctr_data, get_a_content_target_ctr_data, get_profile_visits_monthly, get_content_reaction_data,
     get_target_avg_imp_ctr, get_target_avg_imp_ctr_threshold,
     get_raw_keyword_performance, filter_keywords_by_pos, get_overall_ctr,
     get_strategic_performance,get_essence_target_performance,get_variable_target_performance,
@@ -16,7 +17,8 @@ from scripts.processor import (
     get_purchase_count_weekly, get_purchase_count_monthly,
     has_purchase_content_data, get_purchase_contents_pages_data, get_a_content_target_purchase_data, get_purchase_age_gender_heatmap,get_purchase_age_gender_heatmap_page_data,  # 구매 컨텐츠 추가
     has_revenue_data, get_spend_and_revenue_weekly, get_spend_and_revenue_monthly,  # 광고/매출금액 추가
-    has_follower_demographics_data, get_follower_demographics_latest_date, get_demographics_ratio, get_follower_age_gender_known_only, get_age_known_unknown_by_age, get_follower_age_gender_distribution  # 팔로워 인구통계 추가
+    has_follower_demographics_data, get_follower_demographics_latest_date, get_demographics_ratio, get_follower_age_gender_known_only, get_age_known_unknown_by_age, get_follower_age_gender_distribution,  # 팔로워 인구통계 추가
+    get_target_spend_distribution
 )
 
 def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", avoid_age="", avoid_gender="", currency=""):
@@ -559,7 +561,46 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
             "items": content_results
         }
 
-    # --- [추가] 6. 별첨 자료용 키워드 상세 분석 (4페이지 분량) ---
+    # 6. 반응 기반 콘텐츠 성과 (지표별 TOP/BOTTOM 3, 6페이지)
+    print("반응 기반 콘텐츠 성과 생성 중...")
+    for metric in ['likes', 'saves', 'shares']:
+        for is_top in [True, False]:
+            suffix = "top" if is_top else "bottom"
+            reaction_contents = get_content_reaction_data(
+                target_id, start, end, is_top=is_top, metric=metric
+            )
+            # CTR 콘텐츠 카드와 동일하게 연령/성별 CTR 상세 추가
+            for item in reaction_contents:
+                detail_df = get_a_content_target_ctr_data(item["ad_id"], start, end)
+                if detail_df is not None:
+                    item["target_details"] = detail_df.to_dict(orient="records")
+                else:
+                    item["target_details"] = []
+
+            final_report["datasets"][f"reaction_{metric}_{suffix}"] = {
+                "kind": "reaction_card",
+                "title": f"반응 {suffix} 콘텐츠 ({metric})",
+                "metric": metric,
+                "items": reaction_contents
+            }
+
+
+    # 7. CPPR 콘텐츠 효율 + 타겟별 광고비 분포
+    print("타겟별 광고비 분포 생성 중...")
+    target_spend_df = get_target_spend_distribution(target_id, start, end)
+    if target_spend_df is not None:
+        final_report["datasets"]["target_spend_bubble"] = {
+            "kind":         "target_bubble",
+            "title":        "타겟별 광고비 분포",
+            "rows":         target_spend_df.replace({pd.NA: None, np.nan: None}).to_dict(orient="records"),
+            "main_age":     main_age,
+            "main_gender":  main_gender,
+            "avoid_age":    avoid_age,
+            "avoid_gender": avoid_gender,
+        }
+
+
+    # --- [추가] 별첨 자료용 키워드 상세 분석 (4페이지 분량) ---
     
     # 데이터 불러오기
     print("별첨 자료용 키워드 상세 분석 생성 중...")
@@ -664,6 +705,9 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
 
     # 6. 최종 JSON 저장
     output_path = "json_reports/integrated_report.json"
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(final_report, f, ensure_ascii=False, indent=4, default=str)
     

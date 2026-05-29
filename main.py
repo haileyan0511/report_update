@@ -8,7 +8,9 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 import pandas as pd
 from scripts.processor import _normalize_keyword_by_pos, _best_adverb_score, kiwi, VERB_ADJ_TAGS
-from scripts.visualizer import build_color_map, complementary_hex, render_dataset, is_dark_color, render_bubble_chart, render_purchase_pie_chart, render_follower_gender_doughnut_chart, render_follower_age_gender_stacked_barh_chart
+from scripts.visualizer import (build_color_map, complementary_hex, render_dataset, is_dark_color, 
+                                render_bubble_chart, render_purchase_pie_chart, render_follower_gender_doughnut_chart, render_follower_age_gender_stacked_barh_chart,
+                                render_target_spend_bubble)
 from scripts.reporter import generate_html
 from to_json import run as generate_json
 import time
@@ -88,7 +90,7 @@ def _materialize_content_thumbnails(items: list[dict[str, Any]], output_dir: str
     if not items:
         return
 
-    _load_env_file(Path("db_update/.env"))
+    _load_env_file(Path("scripts/.env"))
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -504,11 +506,11 @@ def run():
     start_time = time.time()
 
     config = {
-        "target_id": 29,
-        "fb_ad_account_id":"act_2112797419492230",
-        "start":"2025-11-17",
-        "end": "2026-03-29",
-        "main_age": ["25-34", "35-44"],
+        "target_id": 22,
+        "fb_ad_account_id":"act_1405475181306250",
+        "start":"2024-02-12",
+        "end": "2026-05-24",
+        "main_age": ["35-44", "25-34"],
         "main_gender": "",
         "avoid_age": "",
         "avoid_gender": "",
@@ -531,7 +533,7 @@ def run():
                     avoid_age=avoid_age, avoid_gender=avoid_gender, currency=currency)
     
     report_path = "json_reports/integrated_report.json"
-    theme_color = "#8C8C89"
+    theme_color = "#1C57AD"
 
     report_json = _load_report(report_path)
     _apply_display_predicate_suffix(report_json)
@@ -756,6 +758,25 @@ def run():
         bottom_items = []
     _materialize_content_thumbnails(top_items + bottom_items)
 
+    # 반응 기반 콘텐츠 썸네일 처리 (추가)
+    reaction_datasets = {}
+    for metric in ['likes', 'saves', 'shares']:
+        for suffix in ['top', 'bottom']:
+            key = f"reaction_{metric}_{suffix}"
+            rendered = render_dataset(datasets.get(key), color_map)
+            if not isinstance(rendered, list):
+                rendered = []
+            _materialize_content_thumbnails(rendered)
+            reaction_datasets[key] = rendered
+
+
+
+    # 타겟별 광고비 버블
+    target_bubble_svg = render_target_spend_bubble(
+        datasets.get("target_spend_bubble") or {}, color_map
+    )
+
+
     target_rows = (datasets.get("target_heatmap") or {}).get("rows") or []
     impressions_rank, impressions_footnote = _top_targets(target_rows, "impressions")
     ctr_rank, ctr_footnote = _top_targets(target_rows, "ctr", filter_low_imps=True)
@@ -789,6 +810,8 @@ def run():
                 target_details = item.get("target_details") or []
                 item["chart"] = render_purchase_pie_chart(target_details, color_map) if target_details else ""
 
+
+
     context = {
         "css_path": "./templates/report.css",
         "theme": theme,
@@ -816,7 +839,15 @@ def run():
             "bottom_note": "",
             "bottom": bottom_items,
             "overall_ctr": overall_ctr,
+            # 반응 기반 콘텐츠 (6종)
+            "reaction_likes_top":    reaction_datasets.get("reaction_likes_top",    []),
+            "reaction_likes_bottom": reaction_datasets.get("reaction_likes_bottom", []),
+            "reaction_saves_top":    reaction_datasets.get("reaction_saves_top",    []),
+            "reaction_saves_bottom": reaction_datasets.get("reaction_saves_bottom", []),
+            "reaction_shares_top":   reaction_datasets.get("reaction_shares_top",   []),
+            "reaction_shares_bottom":reaction_datasets.get("reaction_shares_bottom",[]),
         },
+        "target_bubble": {"chart": target_bubble_svg},                  # ← 추가
         "charts": charts,
         "annotations": {
             "ctr": [],

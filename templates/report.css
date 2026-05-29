@@ -597,7 +597,7 @@ body {
   border: 0;
   border-radius: 0;
   background: transparent;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 5;
   min-height: 0;
   overflow: hidden;
   display: grid;
@@ -1285,3 +1285,51 @@ body {
 .line-chart-row--single .figure {
   margin-top: 50mm !important;
 }
+
+
+/* 썸네일 — 원본 비율 유지 (잘림 없음) */
+.content-card__thumb--ig-ratio {
+  aspect-ratio: unset;
+  height: auto;
+  overflow: visible;
+  display: block;
+}
+.content-card__thumb--ig-ratio img {
+  width: 100%;
+  height: auto;
+  object-fit: initial;
+  display: block;
+}
+
+/* 반응 지표 배지 — 가로 배치 */
+.reaction-metrics-row {
+  grid-column: span 12;
+  grid-row: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2mm;
+}
+
+.reaction-metric {
+  font-size: 16pt;
+  font-weight: 600;
+  color: #444;
+}
+
+.reaction-metric--highlight {
+  font-size: 20pt;
+  color: #ff0000;
+}
+
+.reaction-metric--total {
+  font-size: 16pt;
+  color: #222;
+}
+
+.reaction-metric--ctr {
+  font-size: 16pt;
+  color: #888;
+}
+

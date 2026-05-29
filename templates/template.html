@@ -569,6 +569,96 @@
   </section>
 
 
+  {# ── 반응 기반 콘텐츠 매크로 ── #}
+  {% macro reaction_page(section_label, items, highlight_metric) %}
+  <section class="page">
+    {{ page_header('콘텐츠 성과') }}
+    {{ big_title(section_label) }}
+    <div class="page-body">
+      {% for item in items %}
+        <div class="span-4">
+          <div class="content-card">
+
+            {# 썸네일 — 인스타 피드 4:5 비율 #}
+            <div class="content-card__thumb content-card__thumb--ig-ratio">
+              {% if item.thumbnail %}
+                <img src="{{ item.thumbnail }}" alt="thumbnail">
+              {% else %}
+                <div class="thumb-placeholder">THUMB</div>
+              {% endif %}
+            </div>
+
+            {# 연령/성별 CTR 차트 — 데이터 있을 때만 표시 #}
+            {% if item.has_chart %}
+            <div class="content-card__chart">
+              <div class="mini-chart-svg">{{ item.chart | safe }}</div>
+            </div>
+            {% endif %}
+
+            {# 업로드일 #}
+            <div class="content-card__thumb-caption">{{ item.uploaded_at }} 업로드</div>
+
+            {# 반응 지표 — 가로 배치, 큰 글자 #}
+            <div class="reaction-metrics-row">
+              <span class="reaction-metric {% if highlight_metric == 'likes' %}reaction-metric--highlight{% endif %}">
+                ♥ {{ item.reaction_summary.likes }}
+              </span>
+              <span class="reaction-metric {% if highlight_metric == 'saves' %}reaction-metric--highlight{% endif %}">
+                🔖 {{ item.reaction_summary.saves }}
+              </span>
+              <span class="reaction-metric {% if highlight_metric == 'shares' %}reaction-metric--highlight{% endif %}">
+                ↗ {{ item.reaction_summary.shares }}
+              </span>
+              <span class="reaction-metric reaction-metric--total">
+                합계 {{ item.reaction_summary.total }}
+              </span>
+              <span class="reaction-metric reaction-metric--ctr">
+                CTR {{ item.reaction_summary.ctr }}%
+              </span>
+            </div>
+
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endmacro %}
+
+  {# 6페이지 출력 #}
+  {{ reaction_page('좋아요 상위 콘텐츠 TOP 3',  content.reaction_likes_top,     'likes')  }}
+  {{ reaction_page('좋아요 하위 콘텐츠 TOP 3',  content.reaction_likes_bottom,  'likes')  }}
+  {{ reaction_page('저장 상위 콘텐츠 TOP 3',    content.reaction_saves_top,     'saves')  }}
+  {{ reaction_page('저장 하위 콘텐츠 TOP 3',    content.reaction_saves_bottom,  'saves')  }}
+  {{ reaction_page('공유 상위 콘텐츠 TOP 3',    content.reaction_shares_top,    'shares') }}
+  {{ reaction_page('공유 하위 콘텐츠 TOP 3',    content.reaction_shares_bottom, 'shares') }}
+
+
+
+{# =========================================================
+   타겟별 광고비 분포 버블 그리드
+   ========================================================= #}
+  <section class="page">
+    {{ page_header('타겟 분석') }}
+    {{ big_title('타겟별 광고비 분포') }}
+    <div class="page-body">
+
+      <div class="span-12">
+        {% if target_bubble.chart %}
+          <div class="figure__svg">{{ target_bubble.chart | safe }}</div>
+        {% else %}
+          <div class="figure__placeholder">데이터 없음</div>
+        {% endif %}
+      </div>
+
+      <div class="span-12">
+        <div class="footnote">
+          🟢 메인 타겟&nbsp;&nbsp;🟡 중간&nbsp;&nbsp;🔴 기피 타겟
+          &nbsp;|&nbsp; 원 크기 = 광고비 비중(%) &nbsp;|&nbsp; 원 아래 숫자 = CPC
+        </div>
+      </div>
+
+    </div>
+  </section>
 
 
 

@@ -69,8 +69,8 @@ def get_active_ad_count(account_id, date_start, date_end):
             AND apd.as_of_date <= DATE_TRUNC('week', '{date_end}'::date)::date
             AND ({account_id} = 3
                 OR c.name ILIKE '%%depart%%' 
-                OR c.name LIKE '%%디파트%%' OR c.
-                name ILIKE '%%de;part%%')
+                OR c.name LIKE '%%디파트%%' 
+                OR c.name ILIKE '%%de;part%%')
     """
 
     df = pd.read_sql(query, engine)
@@ -492,7 +492,7 @@ def get_content_ctr_data(account_id, date_start, date_end, threshold, is_top=Tru
         else:
             thumb_val = str(thumb_val).strip() or None
         results.append({
-            'ad_id': row['ad_id'],
+            'ad_id': row['id'],
             'fb_ad_id': row.get('fb_ad_id'),
             'uploaded_at': row['uploaded_at'].date() if pd.notna(row['uploaded_at']) else None,
             'thumbnail': thumb_val,
@@ -500,6 +500,96 @@ def get_content_ctr_data(account_id, date_start, date_end, threshold, is_top=Tru
         })
 
     return results # 이제 3개의 데이터가 담긴 리스트를 반환합니다.
+
+
+# 반응 기반 콘텐츠 성과 (좋아요+저장+공유 합산) 상위/하위 3개
+def get_content_reaction_data(account_id, date_start, date_end, is_top=True, metric='total_reaction'):
+    engine = get_engine()
+    order_direction = "DESC" if is_top else "ASC"
+
+    metric_col_map = {
+        'total_reaction': "COALESCE(ici.likes, 0) + COALESCE(ici.shares, 0) + COALESCE(ici.saved, 0)",
+        'likes':  "ici.likes",
+        'saves':  "ici.saved",
+        'shares': "ici.shares",
+    }
+    order_expr = metric_col_map.get(metric, metric_col_map['total_reaction'])
+
+    query = f"""
+    SELECT
+        ad.id,
+        ad.fb_ad_id,
+        ig.ig_timestamp                             AS uploaded_at,
+        NULLIF(ad.thumb_link, '')                   AS thumbnail,
+        ig.ig_media_type,
+        ici.likes                                   AS total_likes,
+        ici.shares                                  AS total_shares,
+        ici.saved                                   AS total_saves,
+        ici.comments                                AS total_comments,
+        COALESCE(ici.likes, 0)
+            + COALESCE(ici.shares, 0)
+            + COALESCE(ici.saved, 0)                AS total_reaction,
+        (
+        SELECT ROUND(
+            (SUM(apd2.clicks)::numeric / NULLIF(SUM(apd2.impressions), 0)) * 100, 2
+        )
+        FROM ad_performance_daily apd2
+        WHERE apd2.ad_id = ad.id
+          AND apd2.as_of_date >= '{date_start}'
+          AND apd2.as_of_date <= DATE_TRUNC('week', '{date_end}'::date)::date
+        )                                           AS ctr
+    FROM ads ad
+        JOIN ad_sets ads ON ad.ad_set_id = ads.id
+        JOIN campaigns c ON ads.campaign_id = c.id
+        JOIN ig_contents ig
+            ON ad.source_ig_media_id = ig.fb_ig_media_id
+        JOIN LATERAL (
+            SELECT likes, shares, saved, comments
+            FROM ig_content_insights
+            WHERE content_id = ig.id
+            ORDER BY as_of_date DESC
+            LIMIT 1
+        ) ici ON true
+    WHERE ad.account_id = {account_id}
+        AND ig.ig_timestamp IS NOT NULL
+        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date >= '{date_start}'::date
+        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date
+            <= (DATE_TRUNC('week', '{date_end}'::date) - INTERVAL '1 day')::date
+        AND ({account_id} = 3
+            OR c.name ILIKE '%%depart%%'
+            OR c.name LIKE '%%디파트%%'
+            OR c.name ILIKE '%%de;part%%')
+    ORDER BY {order_expr} {order_direction}
+    LIMIT 3;
+    """
+
+    ads_df = pd.read_sql(query, engine)
+    if ads_df.empty:
+        return []
+
+    results = []
+    for _, row in ads_df.iterrows():
+        thumb_val = row.get('thumbnail')
+        if pd.isna(thumb_val):
+            thumb_val = None
+        else:
+            thumb_val = str(thumb_val).strip() or None
+
+        results.append({
+            'ad_id':          row['id'],
+            'fb_ad_id':       row.get('fb_ad_id'),
+            'uploaded_at':    row['uploaded_at'].date() if pd.notna(row['uploaded_at']) else None,
+            'thumbnail':      thumb_val,
+            'ig_media_type':  row.get('ig_media_type'),
+            'total_likes':    int(row['total_likes'] or 0),
+            'total_shares':   int(row['total_shares'] or 0),
+            'total_saves':    int(row['total_saves'] or 0),
+            'total_comments': int(row['total_comments'] or 0),
+            'total_reaction': int(row['total_reaction'] or 0),
+            'ctr': float(row['ctr'] or 0),
+        })
+
+    return results
 
 
 # 특정 광고들의 타겟별 CTR 데이터
@@ -572,7 +662,7 @@ def get_target_avg_imp_ctr_threshold(account_id, date_start, date_end, threshold
     
     query = f"""
         SELECT 
-        apd.age_range, 
+        apd.age_range AS age, 
         apd.gender, 
         SUM(apd.impressions) AS impressions, 
         SUM(apd.clicks) AS clicks,
@@ -644,10 +734,20 @@ def _build_target_filter(target_age=None, target_gender=None):
 
     genders = _to_str_list(target_gender)
     if genders:
-        if len(genders) == 1:
-            clauses.append(f"apd.gender = {_sql_quote(genders[0])}")
+        mapped_genders = []
+        for g in genders:
+            g_low = str(g).strip().lower()
+            if g_low in ['f', '여성']:
+                mapped_genders.append('female')
+            elif g_low in ['m', '남성']:
+                mapped_genders.append('male')
+            else:
+                mapped_genders.append(g)
+        
+        if len(mapped_genders) == 1:
+            clauses.append(f"apd.gender = {_sql_quote(mapped_genders[0])}")
         else:
-            gender_list = ", ".join(_sql_quote(g) for g in genders)
+            gender_list = ", ".join(_sql_quote(g) for g in mapped_genders)
             clauses.append(f"apd.gender IN ({gender_list})")
 
     return "".join(f" AND {c}" for c in clauses)
@@ -1419,7 +1519,7 @@ def get_purchase_count_weekly(account_id, date_start, date_end):
 
         WHERE a.account_id = {account_id}
             AND apd.as_of_date >= '{date_start}'::date
-            ND apd.as_of_date <= '{date_end}'::date
+            AND apd.as_of_date <= '{date_end}'::date
             AND apd.purchase_count IS NOT NULL
             AND ({account_id} = 3 OR c.name ILIKE '%%depart%%' OR c.name LIKE '%%디파트%%' OR c.name ILIKE '%%de;part%%')
 
@@ -1482,7 +1582,7 @@ def get_purchase_age_gender_heatmap(account_id, date_start, date_end):
 
     query = f"""
         SELECT
-            apd.age_range,
+            apd.age_range AS age,
             apd.gender,
             COALESCE(SUM(apd.purchase_count), 0) AS purchases
 
@@ -1646,7 +1746,7 @@ def get_purchase_contents_data(account_id, date_start, date_end):
 
     query = f"""
         SELECT
-            a.source_instagram_media_id AS content_key,
+            a.source_ig_media_id AS content_key,
             MIN(ig.ig_timestamp) AS uploaded_at,
             MAX(NULLIF(a.thumb_link, '')) AS thumbnail,
             STRING_AGG(DISTINCT a.ad_name, ' / ') AS ad_names,
@@ -1655,7 +1755,7 @@ def get_purchase_contents_data(account_id, date_start, date_end):
             COALESCE(SUM(apd.purchase_count), 0) AS purchases
         FROM ad_performance_daily apd
         JOIN ads a ON apd.ad_id = a.id
-        JOIN ad_sets ads ON a.ad_set_id = ads.ad_id
+        JOIN ad_sets ads ON a.ad_set_id = ads.id
         JOIN campaigns c ON ads.campaign_id = c.id
         JOIN ig_contents ig ON a.source_ig_media_id = ig.fb_ig_media_id
         WHERE a.account_id = {account_id}
@@ -1713,7 +1813,7 @@ def get_a_content_target_purchase_data(ad_ids, date_start, date_end):
 
     query = f"""
         SELECT
-            apd.age_range,
+            apd.age_range AS age,
             apd.gender,
             COALESCE(SUM(apd.purchase_count), 0) AS purchases
         FROM ad_performance_daily apd
@@ -1723,7 +1823,7 @@ def get_a_content_target_purchase_data(ad_ids, date_start, date_end):
           AND apd.gender != 'unknown'
         GROUP BY apd.age_range, apd.gender
         HAVING COALESCE(SUM(apd.purchase_count), 0) > 0
-        ORDER BY purchases_ DESC, apd.age_range
+        ORDER BY purchases DESC, apd.age_range
     """
 
     df = pd.read_sql(query, engine)
@@ -1802,8 +1902,8 @@ def get_follower_demographics_latest_date(account_id, date_start, date_end):
     query = """
         SELECT MAX(iid.as_of_date) AS latest_date
         FROM ig_insights_demographics iid
-        JOIN ig_account ig
-          ON igg.ig_id = ig.id
+        JOIN ig_accounts ig
+          ON iid.ig_id = ig.id
         JOIN ad_accounts aa
           ON ig.id = aa.ig_account_id
         WHERE aa.id = %(account_id)s
@@ -1908,7 +2008,7 @@ def get_demographics_ratio(account_id, date_start, date_end, dimension="gender",
                         WHEN {unknown_condition} THEN '알 수 없음'
                         ELSE '{known_label}'
                     END AS category,
-                    SUM(iid.follower) AS value
+                    SUM(iid.followers) AS value
                 FROM ig_insights_demographics iid
                 JOIN ig_accounts ig
                   ON iid.ig_id = ig.id
@@ -2162,3 +2262,45 @@ def get_follower_age_gender_distribution(account_id, date_start, date_end):
     )
 
     return None if df.empty else df
+
+
+
+# 타겟별(연령×성별) 광고비 분포 (unknown 제외)
+def get_target_spend_distribution(account_id, date_start, date_end):
+    engine = get_engine()
+
+    query = f"""
+    SELECT
+        apd.age_range,
+        apd.gender,
+        SUM(apd.spend)                                              AS spend,
+        ROUND(
+            SUM(apd.spend)::numeric
+            / NULLIF(SUM(SUM(apd.spend)) OVER (), 0)::numeric * 100, 1
+        )                                                           AS spend_ratio,
+        ROUND((SUM(apd.clicks)::numeric
+            / NULLIF(SUM(apd.impressions), 0)::numeric) * 100, 2)  AS ctr,
+        ROUND(SUM(apd.spend)::numeric
+            / NULLIF(SUM(apd.clicks), 0)::numeric, 0)              AS cpc
+    FROM ads ad
+        JOIN ad_sets ads ON ad.ad_set_id = ads.id
+        JOIN campaigns c  ON ads.campaign_id = c.id
+        LEFT JOIN ad_performance_daily apd ON ad.id = apd.ad_id
+    WHERE ad.account_id = {account_id}
+        AND apd.as_of_date >= '{date_start}'
+        AND apd.as_of_date <= DATE_TRUNC('week', '{date_end}'::date)::date
+        AND apd.gender  NOT IN ('unknown', 'Unknown')
+        AND apd.age_range NOT IN ('unknown', 'Unknown')
+        AND ({account_id} = 3
+            OR c.name ILIKE '%%depart%%'
+            OR c.name LIKE '%%디파트%%'
+            OR c.name ILIKE '%%de;part%%')
+    GROUP BY apd.age_range, apd.gender
+    ORDER BY apd.age_range, apd.gender;
+    """
+
+    df = pd.read_sql(query, engine)
+    if df.empty:
+        return None
+
+    return df
