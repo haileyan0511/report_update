@@ -18,7 +18,8 @@ from scripts.processor import (
     has_purchase_content_data, get_purchase_contents_pages_data, get_a_content_target_purchase_data, get_purchase_age_gender_heatmap,get_purchase_age_gender_heatmap_page_data,  # 구매 컨텐츠 추가
     has_revenue_data, get_spend_and_revenue_weekly, get_spend_and_revenue_monthly,  # 광고/매출금액 추가
     has_follower_demographics_data, get_follower_demographics_latest_date, get_demographics_ratio, get_follower_age_gender_known_only, get_age_known_unknown_by_age, get_follower_age_gender_distribution,  # 팔로워 인구통계 추가
-    get_target_spend_distribution
+    get_target_spend_distribution, 
+    get_ctr_follows_scatter_data, get_prev_quarter_ctr_follows_medians, # ← 추가
 )
 
 def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", avoid_age="", avoid_gender="", currency=""):
@@ -599,6 +600,21 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
             "avoid_gender": avoid_gender,
         }
 
+
+    # ── CTR × 팔로우 산점도 데이터 ───────────────────────────
+    scatter_rows = get_ctr_follows_scatter_data(target_id, start, end)
+    prev_medians = get_prev_quarter_ctr_follows_medians(target_id, start)
+
+    if scatter_rows:
+        final_report["ctr_follows_scatter"] = {
+            "rows":           scatter_rows,
+            "ctr_median":     prev_medians.get("ctr_median"),
+            "follows_median": prev_medians.get("follows_median"),
+        }
+    else:
+        final_report["ctr_follows_scatter"] = {
+            "rows": [], "ctr_median": None, "follows_median": None
+        }
 
     # --- [추가] 별첨 자료용 키워드 상세 분석 (4페이지 분량) ---
     

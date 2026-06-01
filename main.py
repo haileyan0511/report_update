@@ -10,7 +10,7 @@ import pandas as pd
 from scripts.processor import _normalize_keyword_by_pos, _best_adverb_score, kiwi, VERB_ADJ_TAGS
 from scripts.visualizer import (build_color_map, complementary_hex, render_dataset, is_dark_color, 
                                 render_bubble_chart, render_purchase_pie_chart, render_follower_gender_doughnut_chart, render_follower_age_gender_stacked_barh_chart,
-                                render_target_spend_bubble)
+                                render_target_spend_bubble, render_ctr_follows_quadrant_chart,)
 from scripts.reporter import generate_html
 from to_json import run as generate_json
 import time
@@ -506,16 +506,17 @@ def run():
     start_time = time.time()
 
     config = {
-        "target_id": 22,
-        "fb_ad_account_id":"act_1405475181306250",
-        "start":"2024-02-12",
+        "target_id": 12,
+        "fb_ad_account_id":"act_1008886398030550",
+        "start":"2026-02-24",
         "end": "2026-05-24",
-        "main_age": ["35-44", "25-34"],
+        "main_age": ["18-24", "25-34"],
         "main_gender": "",
-        "avoid_age": "",
+        "avoid_age": ["55-64", "65+"],
         "avoid_gender": "",
         "currency": ""  # ""=원화, "dollar"=달러
     }
+
     target_id, fb_ad_account_id = config["target_id"], config["fb_ad_account_id"]
     start, end = config["start"], config["end"]
     main_age, main_gender = config["main_age"], config["main_gender"]
@@ -533,7 +534,7 @@ def run():
                     avoid_age=avoid_age, avoid_gender=avoid_gender, currency=currency)
     
     report_path = "json_reports/integrated_report.json"
-    theme_color = "#1C57AD"
+    theme_color = "#081F2C"
 
     report_json = _load_report(report_path)
     _apply_display_predicate_suffix(report_json)
@@ -758,6 +759,32 @@ def run():
         bottom_items = []
     _materialize_content_thumbnails(top_items + bottom_items)
 
+
+    # ── CTR × 팔로우 산점도 ───────────────────────────────────
+    scatter_block    = report_json.get("ctr_follows_scatter", {})
+    scatter_rows     = scatter_block.get("rows", [])
+    scatter_ctr_med  = scatter_block.get("ctr_median")
+    scatter_fol_med  = scatter_block.get("follows_median")
+
+    # 썸네일 S3 → 로컬 다운로드 (기존 materialize 패턴 동일하게 적용)
+    _materialize_content_thumbnails(scatter_rows)
+
+    # 중앙값이 없으면 현재 기간 데이터의 중앙값으로 대체
+    if scatter_rows and (scatter_ctr_med is None or scatter_fol_med is None):
+        import pandas as _pd_tmp
+        _df_tmp = _pd_tmp.DataFrame(scatter_rows)
+        scatter_ctr_med = float(_df_tmp["ctr"].median())     if scatter_ctr_med is None  else scatter_ctr_med
+        scatter_fol_med = float(_df_tmp["follows"].median()) if scatter_fol_med is None  else scatter_fol_med
+
+    quadrant_chart_b64 = ""
+    if scatter_rows and scatter_ctr_med is not None and scatter_fol_med is not None:
+        quadrant_chart_b64 = render_ctr_follows_quadrant_chart(
+            scatter_data   = scatter_rows,
+            ctr_median     = scatter_ctr_med,
+            follows_median = scatter_fol_med,
+        )
+
+
     # 반응 기반 콘텐츠 썸네일 처리 (추가)
     reaction_datasets = {}
     for metric in ['likes', 'saves', 'shares']:
@@ -849,6 +876,11 @@ def run():
         },
         "target_bubble": {"chart": target_bubble_svg},                  # ← 추가
         "charts": charts,
+        "quadrant_chart": {
+            "image":          quadrant_chart_b64,
+            "ctr_median":     scatter_ctr_med,
+            "follows_median": scatter_fol_med,
+        },
         "annotations": {
             "ctr": [],
             "organic": [],

@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from scripts.db_connector import get_engine
+from datetime import datetime, timedelta
 
 # .env에서 NLTK_DATA 경로 로드 후 nltk 초기화
 try:
@@ -2304,3 +2305,98 @@ def get_target_spend_distribution(account_id, date_start, date_end):
         return None
 
     return df
+
+
+
+# ─────────────────────────────────────────────────────────────
+# CTR × 팔로우 4사분면 스캐터 데이터
+# ─────────────────────────────────────────────────────────────
+
+def get_ctr_follows_scatter_data(account_id: int, date_start: str, date_end: str) -> list[dict]:
+    """
+    콘텐츠별 CTR(광고 성과)과 팔로우 발생수(IG 콘텐츠 인사이트)를
+    하나의 row로 결합하여 반환합니다.
+
+    연결 경로:
+        ad_accounts → campaigns → ad_sets → ads
+        ads.source_ig_media_id = ig_contents.fb_ig_media_id
+        ig_contents.id = ig_content_insights.content_id
+    """
+    engine = get_engine()
+
+    query = """
+        SELECT
+            ic.id                                          AS content_id,
+            ic.fb_ig_media_id,
+            COALESCE(ic.thumbnail_url, ic.media_url)       AS thumbnail,
+            ic.ig_permalink,
+            ic.ig_media_type,
+            ic.ig_timestamp,
+            -- CTR: 기간 내 노출 가중 집계
+            ROUND(
+                (SUM(apd.clicks)::float
+                 / NULLIF(SUM(apd.impressions)::float, 0) * 100
+                )::numeric, 4
+            )                                              AS ctr,
+            -- follows: 기간 내 합계
+            COALESCE(SUM(ici.follows), 0)                  AS follows
+        FROM ig_contents ic
+        -- 광고 성과 연결
+        JOIN ads a             ON a.source_ig_media_id = ic.fb_ig_media_id
+        JOIN ad_sets  ads_t    ON a.ad_set_id          = ads_t.id
+        JOIN campaigns cp      ON ads_t.campaign_id    = cp.id
+        JOIN ad_accounts aa    ON cp.ad_account_id     = aa.id
+        JOIN ad_performance_daily apd ON apd.ad_id     = a.id
+        -- IG 콘텐츠 인사이트 연결
+        JOIN ig_content_insights ici  ON ici.content_id = ic.id
+        WHERE aa.id = %(account_id)s
+          AND apd.as_of_date BETWEEN %(date_start)s AND %(date_end)s
+          AND ici.as_of_date BETWEEN %(date_start)s AND %(date_end)s
+        GROUP BY
+            ic.id, ic.fb_ig_media_id, ic.thumbnail_url,
+            ic.media_url, ic.ig_permalink, ic.ig_media_type, ic.ig_timestamp
+        HAVING SUM(apd.impressions) > 0
+        ORDER BY ic.ig_timestamp DESC
+    """
+
+    df = pd.read_sql(
+        query, engine,
+        params={"account_id": account_id, "date_start": date_start, "date_end": date_end}
+    )
+
+    if df.empty:
+        return []
+
+    df["ctr"]     = pd.to_numeric(df["ctr"],     errors="coerce").fillna(0.0)
+    df["follows"] = pd.to_numeric(df["follows"], errors="coerce").fillna(0.0)
+
+    return df.to_dict("records")
+
+
+def get_prev_quarter_ctr_follows_medians(account_id: int, date_start: str) -> dict:
+    """
+    사분면 십자선 기준값 산출.
+    date_start 기준 3개월 전 기간(이전 분기)의 CTR 중앙값과 팔로우 중앙값을 반환합니다.
+
+    Returns:
+        {"ctr_median": float, "follows_median": float}
+        데이터 부족 시 각 값은 None
+    """
+    from dateutil.relativedelta import relativedelta  # 표준 라이브러리 dateutil
+
+    end_dt   = datetime.strptime(date_start, "%Y-%m-%d") - timedelta(days=1)
+    start_dt = end_dt - relativedelta(months=3) + timedelta(days=1)
+
+    prev_start = start_dt.strftime("%Y-%m-%d")
+    prev_end   = end_dt.strftime("%Y-%m-%d")
+
+    rows = get_ctr_follows_scatter_data(account_id, prev_start, prev_end)
+
+    if not rows:
+        return {"ctr_median": None, "follows_median": None}
+
+    df = pd.DataFrame(rows)
+    return {
+        "ctr_median":     float(df["ctr"].median()),
+        "follows_median": float(df["follows"].median()),
+    }

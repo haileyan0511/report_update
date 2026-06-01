@@ -18,6 +18,19 @@
     }
   </style>
   {% endif %}
+  <style>
+    .quadrant-chart-container {
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .quadrant-chart-container img {
+      width: 100% !important;
+      height: auto !important;
+      display: block;
+      max-width: 100%;
+    }
+  </style>
 </head>
 
 <body>
@@ -57,7 +70,7 @@
       {% if _img.startswith('<svg') %}
         <div class="figure__svg">{{ img_src | safe }}</div>
       {% else %}
-        <img class="figure__img" src="{{ img_src }}" alt="{{ alt }}">
+        <img class="figure__img" src="{{ img_src | safe }}" alt="{{ alt }}">
       {% endif %}
     {% else %}
       <div class="figure__placeholder">CHART / IMAGE</div>
@@ -640,7 +653,7 @@
   <section class="page">
     {{ page_header('타겟 분석') }}
     {{ big_title('타겟별 광고비 분포') }}
-    <div class="page-body">
+    <div class="page-body" style="align-content: start; padding-top: 20mm;">
 
       <div class="span-12">
         {% if target_bubble.chart %}
@@ -650,16 +663,26 @@
         {% endif %}
       </div>
 
-      <div class="span-12">
-        <div class="footnote">
-          🟢 메인 타겟&nbsp;&nbsp;🟡 중간&nbsp;&nbsp;🔴 기피 타겟
-          &nbsp;|&nbsp; 원 크기 = 광고비 비중(%) &nbsp;|&nbsp; 원 아래 숫자 = CPC
-        </div>
-      </div>
-
     </div>
   </section>
 
+
+  {% if quadrant_chart.image %}
+  <section class="page quadrant-page">
+    {{ page_header('콘텐츠 성과') }}
+    {{ big_title('CTR × 팔로우 4사분면') }}
+    
+    <div class="page-body">
+      <div class="span-12 quadrant-chart-container" style="display: flex; justify-content: center; padding-top: 4mm;">
+        <img
+          src="{{ quadrant_chart.image | safe }}"
+          alt="CTR × 팔로우 4사분면"
+          style="width: 100%; max-width: 2000px; height: auto; display: block; margin: 0 auto;"
+        />
+      </div>
+    </div>
+  </section>
+  {% endif %}
 
 
 

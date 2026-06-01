@@ -526,6 +526,7 @@ body {
   transform: translateY(-9mm);
 }
 
+
 .heatmap-center {
   width: 100%;
   flex: 0 0 auto;
@@ -1287,17 +1288,29 @@ body {
 }
 
 
-/* 썸네일 — 원본 비율 유지 (잘림 없음) */
-.content-card__thumb--ig-ratio {
-  aspect-ratio: unset;
+/* 4사분면 차트 — 컨테이너를 꽉 채워 선명하게 출력 (BUG-03) */
+.quadrant-chart-container {
+  width: 100%;
+  display: block;
+}
+.quadrant-chart-container img {
+  width: 100%;
   height: auto;
-  overflow: visible;
+  display: block;
+}
+
+/* 썸네일 — 4:5 비율 강제 고정 (찌그러짐 없이 크롭) */
+.content-card__thumb--ig-ratio {
+  aspect-ratio: 4 / 5;
+  height: auto;
+  overflow: hidden;
   display: block;
 }
 .content-card__thumb--ig-ratio img {
   width: 100%;
-  height: auto;
-  object-fit: initial;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
   display: block;
 }
 
