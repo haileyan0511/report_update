@@ -521,6 +521,7 @@ def get_content_reaction_data(account_id, date_start, date_end, is_top=True, met
         ad.id,
         ad.fb_ad_id,
         ig.ig_timestamp                             AS uploaded_at,
+        ig.caption                                  AS caption,   -- 차트 Y축 레이블용 캡션 추가
         NULLIF(ad.thumb_link, '')                   AS thumbnail,
         ig.ig_media_type,
         ici.likes                                   AS total_likes,
@@ -561,7 +562,7 @@ def get_content_reaction_data(account_id, date_start, date_end, is_top=True, met
             OR c.name LIKE '%%디파트%%'
             OR c.name ILIKE '%%de;part%%')
     ORDER BY {order_expr} {order_direction}
-    LIMIT 3;
+    LIMIT 5;
     """
 
     ads_df = pd.read_sql(query, engine)
@@ -580,6 +581,7 @@ def get_content_reaction_data(account_id, date_start, date_end, is_top=True, met
             'ad_id':          row['id'],
             'fb_ad_id':       row.get('fb_ad_id'),
             'uploaded_at':    row['uploaded_at'].date() if pd.notna(row['uploaded_at']) else None,
+            'caption':        str(row.get('caption') or '').strip(),
             'thumbnail':      thumb_val,
             'ig_media_type':  row.get('ig_media_type'),
             'total_likes':    int(row['total_likes'] or 0),
@@ -591,6 +593,55 @@ def get_content_reaction_data(account_id, date_start, date_end, is_top=True, met
         })
 
     return results
+
+
+def get_reaction_metric_avg(account_id, date_start, date_end, metric='likes'):
+    """
+    전체 기간(date_start ~ date_end), 전체 콘텐츠를 대상으로
+    지정 반응 지표(likes / saves / shares)의 평균값을 반환한다.
+    LIMIT 없이 집계하므로 get_content_reaction_data의 5개 샘플 평균과 다르다.
+    """
+    engine = get_engine()
+
+    # 지표별 집계 컬럼 표현식
+    metric_col_map = {
+        'likes':  'ici.likes',
+        'saves':  'ici.saved',
+        'shares': 'ici.shares',
+    }
+    agg_expr = metric_col_map.get(metric, 'ici.likes')
+
+    query = f"""
+    SELECT
+        ROUND(AVG(COALESCE({agg_expr}, 0))::numeric, 1) AS metric_avg
+    FROM ads ad
+        JOIN ad_sets ads ON ad.ad_set_id = ads.id
+        JOIN campaigns c ON ads.campaign_id = c.id
+        JOIN ig_contents ig
+            ON ad.source_ig_media_id = ig.fb_ig_media_id
+        JOIN LATERAL (
+            SELECT likes, saved, shares
+            FROM ig_content_insights
+            WHERE content_id = ig.id
+            ORDER BY as_of_date DESC
+            LIMIT 1
+        ) ici ON true
+    WHERE ad.account_id = {account_id}
+        AND ig.ig_timestamp IS NOT NULL
+        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date >= '{date_start}'::date
+        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date
+            <= (DATE_TRUNC('week', '{date_end}'::date) - INTERVAL '1 day')::date
+        AND ({account_id} = 3
+            OR c.name ILIKE '%%depart%%'
+            OR c.name LIKE '%%디파트%%'
+            OR c.name ILIKE '%%de;part%%');
+    """
+
+    result = pd.read_sql(query, engine)
+    if result.empty or result['metric_avg'].iloc[0] is None:
+        return 0.0
+    return float(result['metric_avg'].iloc[0])
+
 
 
 # 특정 광고들의 타겟별 CTR 데이터
@@ -2373,13 +2424,13 @@ def get_ctr_follows_scatter_data(account_id: int, date_start: str, date_end: str
     return df.to_dict("records")
 
 
-def get_prev_quarter_ctr_follows_medians(account_id: int, date_start: str) -> dict:
+def get_prev_quarter_ctr_follows_means(account_id: int, date_start: str) -> dict:
     """
     사분면 십자선 기준값 산출.
-    date_start 기준 3개월 전 기간(이전 분기)의 CTR 중앙값과 팔로우 중앙값을 반환합니다.
+    date_start 기준 3개월 전 기간(이전 분기)의 CTR 중앙값과 팔로우 평균값을 반환합니다.
 
     Returns:
-        {"ctr_median": float, "follows_median": float}
+        {"ctr_mean": float, "follows_mean": float}
         데이터 부족 시 각 값은 None
     """
     from dateutil.relativedelta import relativedelta  # 표준 라이브러리 dateutil
@@ -2393,10 +2444,11 @@ def get_prev_quarter_ctr_follows_medians(account_id: int, date_start: str) -> di
     rows = get_ctr_follows_scatter_data(account_id, prev_start, prev_end)
 
     if not rows:
-        return {"ctr_median": None, "follows_median": None}
+        return {"ctr_mean": None, "follows_mean": None}
 
     df = pd.DataFrame(rows)
     return {
-        "ctr_median":     float(df["ctr"].median()),
-        "follows_median": float(df["follows"].median()),
+        # 중앙값(median) → 평균(mean)으로 교체
+        "ctr_mean":     float(df["ctr"].mean()),
+        "follows_mean": float(df["follows"].mean()),
     }

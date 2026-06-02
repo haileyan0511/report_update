@@ -583,67 +583,56 @@
 
 
   {# ── 반응 기반 콘텐츠 매크로 ── #}
-  {% macro reaction_page(section_label, items, highlight_metric) %}
+  {% macro reaction_page(section_label, data, highlight_metric) %}
   <section class="page">
     {{ page_header('콘텐츠 성과') }}
     {{ big_title(section_label) }}
-    <div class="page-body">
-      {% for item in items %}
-        <div class="span-4">
-          <div class="content-card">
 
-            {# 썸네일 — 인스타 피드 4:5 비율 #}
-            <div class="content-card__thumb content-card__thumb--ig-ratio">
+    <div class="page-body reaction-page-body">
+
+      {# 상단 영역: 썸네일 5개 가로 그리드 #}
+      <div class="reaction-thumb-row">
+        {% for item in data.cards %}
+          <div class="reaction-thumb-cell">
+
+            {# 썸네일 이미지 또는 플레이스홀더 #}
+            <div class="reaction-thumb-cell__img-wrap">
               {% if item.thumbnail %}
                 <img src="{{ item.thumbnail }}" alt="thumbnail">
               {% else %}
-                <div class="thumb-placeholder">THUMB</div>
+                <div class="thumb-placeholder">NO IMG</div>
               {% endif %}
             </div>
 
-            {# 연령/성별 CTR 차트 — 데이터 있을 때만 표시 #}
-            {% if item.has_chart %}
-            <div class="content-card__chart">
-              <div class="mini-chart-svg">{{ item.chart | safe }}</div>
-            </div>
-            {% endif %}
-
-            {# 업로드일 #}
-            <div class="content-card__thumb-caption">{{ item.uploaded_at }} 업로드</div>
-
-            {# 반응 지표 — 가로 배치, 큰 글자 #}
-            <div class="reaction-metrics-row">
-              <span class="reaction-metric {% if highlight_metric == 'likes' %}reaction-metric--highlight{% endif %}">
-                ♥ {{ item.reaction_summary.likes }}
-              </span>
-              <span class="reaction-metric {% if highlight_metric == 'saves' %}reaction-metric--highlight{% endif %}">
-                🔖 {{ item.reaction_summary.saves }}
-              </span>
-              <span class="reaction-metric {% if highlight_metric == 'shares' %}reaction-metric--highlight{% endif %}">
-                ↗ {{ item.reaction_summary.shares }}
-              </span>
-              <span class="reaction-metric reaction-metric--total">
-                합계 {{ item.reaction_summary.total }}
-              </span>
-              <span class="reaction-metric reaction-metric--ctr">
-                CTR {{ item.reaction_summary.ctr }}%
-              </span>
+            {# 업로드 일자 #}
+            <div class="reaction-thumb-cell__date">
+              {{ item.uploaded_at }}
             </div>
 
           </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
+
+      {# 하단 영역: 단일 가로형 막대그래프 SVG #}
+      <div class="reaction-chart-wrap">
+        {% if data.chart_svg %}
+          <div class="reaction-chart-svg">{{ data.chart_svg | safe }}</div>
+        {% else %}
+          <div class="reaction-chart-empty">데이터 없음</div>
+        {% endif %}
+      </div>
+
     </div>
   </section>
   {% endmacro %}
 
-  {# 6페이지 출력 #}
-  {{ reaction_page('좋아요 상위 콘텐츠 TOP 3',  content.reaction_likes_top,     'likes')  }}
-  {{ reaction_page('좋아요 하위 콘텐츠 TOP 3',  content.reaction_likes_bottom,  'likes')  }}
-  {{ reaction_page('저장 상위 콘텐츠 TOP 3',    content.reaction_saves_top,     'saves')  }}
-  {{ reaction_page('저장 하위 콘텐츠 TOP 3',    content.reaction_saves_bottom,  'saves')  }}
-  {{ reaction_page('공유 상위 콘텐츠 TOP 3',    content.reaction_shares_top,    'shares') }}
-  {{ reaction_page('공유 하위 콘텐츠 TOP 3',    content.reaction_shares_bottom, 'shares') }}
+  {# 6페이지 출력 — data 인자가 딕셔너리로 변경됨 #}
+  {{ reaction_page('좋아요 상위 콘텐츠',  content.reaction_likes_top,     'likes')  }}
+  {{ reaction_page('좋아요 하위 콘텐츠',  content.reaction_likes_bottom,  'likes')  }}
+  {{ reaction_page('저장 상위 콘텐츠',    content.reaction_saves_top,     'saves')  }}
+  {{ reaction_page('저장 하위 콘텐츠',    content.reaction_saves_bottom,  'saves')  }}
+  {{ reaction_page('공유 상위 콘텐츠',    content.reaction_shares_top,    'shares') }}
+  {{ reaction_page('공유 하위 콘텐츠',    content.reaction_shares_bottom, 'shares') }}
 
 
 

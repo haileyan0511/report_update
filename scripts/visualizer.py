@@ -281,8 +281,7 @@ def render_line_chart(dataset: Dict[str, Any], color_map: Dict[str, Any], compac
     show_average = dataset.get("show_average", False)
     
     # 평균선 표시 대상 차트
-    if title_text in ["주별 CTR 추이", "오가닉 조회수 추이 (주별)", "프로필 방문 수(주별)"] or \
-       ("CTR" in title_text and "월별" in title_text):
+    if title_text in ["주별 CTR 추이", "오가닉 조회수 추이 (주별)", "프로필 방문 수(주별)"] :
         show_average = True
     # =========================================================
 
@@ -849,62 +848,138 @@ def render_content_card(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> L
     return rendered
 
 
-def render_reaction_card(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if not dataset:
-        return []
+def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    반응 지표(좋아요/저장/공유) 상하위 콘텐츠 통합 렌더링.
 
-    items = dataset.get("items") or []
-    rendered = []
-
-    for item in items:
-        new_item = dict(item)
-        details = item.get("target_details") or []
-        chart_svg = ""
-
-        # render_content_card와 동일한 연령/성별 CTR 차트
-        if details:
-            detail_df = pd.DataFrame(details)
-            if (
-                not detail_df.empty
-                and {"age", "gender", "ctr"}.issubset(detail_df.columns)
-            ):
-                detail_df["gender"] = detail_df["gender"].astype(str).str.strip()
-                detail_df = detail_df[detail_df["gender"].str.lower() != "unknown"]
-                detail_df["ctr"] = pd.to_numeric(detail_df["ctr"], errors="coerce")
-                detail_df = detail_df.dropna(subset=["ctr"])
-                detail_df = detail_df[detail_df["ctr"] > 0]
-
-                if not detail_df.empty:
-                    detail_df = detail_df.sort_values("ctr", ascending=False).head(6)
-                    labels = []
-                    for _, row in detail_df.iterrows():
-                        age_text = str(row["age"]).strip()
-                        gender_text = "여성" if row["gender"].lower() == "female" else "남성"
-                        labels.append(f"{age_text}<br>{gender_text}")
-                    values = detail_df["ctr"].tolist()
-                    mini_ds = {
-                        "kind": "bar_v",
-                        "labels": labels,
-                        "series": [{"name": "ctr", "data": values}],
-                        "unit": "%",
-                    }
-                    chart_svg = render_bar_v_chart(
-                        mini_ds, color_map,
-                        compact=True, show_labels=True, show_values=True,
-                    )
-
-        new_item["chart"] = chart_svg
-        new_item["has_chart"] = bool(chart_svg)
-        new_item["reaction_summary"] = {
-            "likes":  int(item.get("total_likes",  0) or 0),
-            "saves":  int(item.get("total_saves",  0) or 0),
-            "shares": int(item.get("total_shares", 0) or 0),
-            "total":  int(item.get("total_reaction", 0) or 0),
-            "ctr":    float(item.get("ctr", 0) or 0),
+    반환값 구조:
+        {
+            "items":      List[Dict]  - 썸네일·업로드일 정보 (template 상단 그리드용)
+            "chart_svg":  str         - 가로형 막대그래프 SVG (template 하단 차트용)
         }
-        rendered.append(new_item)
 
-    return rendered
+    차트 구성:
+        - Y축: 각 콘텐츠의 업로드 날짜 (말줄임 없음, 날짜 형식으로 간결)
+        - X축 막대: metric 수치, 막대 끝에 정확한 수치 표시
+        - 최하단 막대: '전체 평균' 행 (색상으로 구분)
+    """
+    import io
+
+    if not dataset:
+        return {"items": [], "chart_svg": ""}
+
+    items      = dataset.get("items") or []
+    metric_col = dataset.get("metric_col", "total_likes")
+    metric_avg = dataset.get("metric_avg", 0.0)
+    metric     = dataset.get("metric", "likes")
+
+    # 지표 한국어 레이블 매핑
+    metric_label_map = {
+        "likes":  "좋아요",
+        "saves":  "저장",
+        "shares": "공유",
+    }
+    metric_label = metric_label_map.get(metric, metric)
+
+    # 상단 그리드용 아이템 리스트 (썸네일·업로드일만 전달)
+    thumb_items = [
+        {
+            "thumbnail":    item.get("thumbnail"),
+            "uploaded_at":  item.get("uploaded_at"),
+            "ig_media_type": item.get("ig_media_type"),
+        }
+        for item in items
+    ]
+
+    if not items:
+        return {"cards": [], "chart_svg": ""}
+
+    # 차트 데이터 구성: 콘텐츠 5개 + 전체 평균 1개
+    labels = []
+    values = []
+
+    for idx, item in enumerate(items, 1):
+        caption = str(item.get("caption") or "").strip()
+
+        if caption:
+            # caption 앞 7글자 추출 후 말줄임표 부착.
+            # 7글자 이하면 그대로 사용하고 말줄임표를 붙이지 않음.
+            label = caption[:7] + "..." if len(caption) > 7 else caption
+        else:
+            # caption이 없는 경우 업로드 날짜로 대체
+            label = str(item.get("uploaded_at") or f"콘텐츠 {idx}")
+        
+        labels.append(label)
+        values.append(float(item.get(metric_col, 0) or 0))
+
+    # 전체 평균 행을 최하단에 추가
+    labels.append("전체 평균")
+    values.append(float(metric_avg))
+
+    n = len(labels)
+
+    # 막대 색상: 콘텐츠 행은 base색, 평균 행은 보조색
+    bar_color   = color_map.get("base", "#333333")
+    avg_color   = "#aaaaaa"
+    bar_colors  = [bar_color] * (n - 1) + [avg_color]
+
+    plt.rcParams["svg.fonttype"] = "none"
+
+    fig_h = min(2.4, max(1.6, n * 0.34))
+    fig, ax = plt.subplots(figsize=(7, fig_h))
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
+    fig.subplots_adjust(left=0.26, right=0.88, top=0.95, bottom=0.12)
+
+    y_pos = list(range(n - 1, -1, -1))   # 위→아래: 콘텐츠1 ~ 콘텐츠5 ~ 평균
+
+    bars = ax.barh(
+        y_pos, values,
+        color=bar_colors,
+        height=0.55,
+        edgecolor="none",
+    )
+
+    # 막대 끝에 정확한 수치 표시
+    x_max = max(values) if values else 1
+    for bar, val in zip(bars, values):
+        ax.text(
+            bar.get_width() + x_max * 0.015,   # 막대 끝에서 약간 오른쪽
+            bar.get_y() + bar.get_height() / 2,
+            f"{int(val):,}",
+            va="center", ha="left",
+            fontsize=7, color="#333333",
+        )
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=7, color="#333333")
+    ax.yaxis.set_tick_params(length=0)
+
+    # 평균 행 Y축 레이블 색상 강조
+    tick_labels = ax.get_yticklabels()
+    if tick_labels:
+        tick_labels[0].set_color(avg_color)   # y_pos 최소(= 평균 행) 위치
+
+    ax.set_xlabel(metric_label, fontsize=8, color="#555555", labelpad=4)
+    ax.set_xlim(0, x_max * 1.18)   # 수치 텍스트 공간 확보
+    ax.xaxis.set_visible(False)
+    ax.grid(False)
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # 콘텐츠 행과 평균 행 사이 구분선
+    ax.axhline(y=0.5, color="#cccccc", linewidth=0.8, linestyle="--")
+
+    buf = io.StringIO()
+    fig.savefig(buf, format="svg")
+    plt.close(fig)
+    plt.rcParams["svg.fonttype"] = "path"
+
+    svg = buf.getvalue()
+    idx = svg.find("<svg")
+    chart_svg = svg[idx:] if idx != -1 else svg
+
+    return {"cards": thumb_items, "chart_svg": chart_svg}
 
 def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> str:
     """타겟(연령×성별) 광고비 비중 버블 그리드 (히트맵 스타일)."""
@@ -966,11 +1041,14 @@ def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any
 
     n_ages = len(ages)
     
-    # 💡 1. 폰트 뻥튀기 방지 & 여백 최소화
-    # figsize 가로를 넉넉하게 주어 글씨가 뚱뚱해지지 않게 방어합니다.
-    fig, ax = plt.subplots(figsize=(8.0, 3.6)) 
+    plt.rcParams["svg.fonttype"] = "none"
+
+    fig_w = 7.5   # 고정 너비 (필요에 따라 조정)
+    fig_h = 3.2
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    
     # 양옆(left, right) 여백을 극단적으로 줄여 차트를 꽉 채웁니다.
-    fig.subplots_adjust(top=0.9, bottom=0.35, left=0.03, right=0.97)
+    fig.subplots_adjust(top=0.88, bottom=0.32, left=0.07, right=0.90)
     fig.patch.set_alpha(0)
     ax.patch.set_alpha(0)
     ax.grid(False)
@@ -978,6 +1056,12 @@ def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any
     max_ratio = df["spend_ratio"].max() or 1
     
     BASE = 3500
+    
+    plot_width = fig_w * (0.90 - 0.07)
+    col_width = plot_width / n_ages
+    col_pt  = col_width * 72
+    MAX_S   = (col_pt * 0.72) ** 2    # 72%로 축소하여 최대 버블이 셀 안에 머물도록 함
+    MIN_S   = MAX_S * 0.12
 
     for j, age in enumerate(ages):
         for i, gender in enumerate(genders):
@@ -987,15 +1071,20 @@ def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any
 
             ratio = float(row["spend_ratio"].iloc[0])
             cpc   = float(row["cpc"].iloc[0])
-            size  = BASE * (ratio / max_ratio) * 0.85 + BASE * 0.15
+            size  = MIN_S + (MAX_S - MIN_S) * (ratio / max_ratio)
             color = cell_color(age, gender)
 
-            ax.scatter(j, -i, s=size, color=color,
-                       edgecolors="white", linewidth=1.5, alpha=0.9, zorder=2)
-            
+            ax.scatter(
+                j, -i, s=size, color=color,
+                edgecolors="white", linewidth=1.5, alpha=0.9, zorder=2,
+                clip_on=False,  # [수정 2] 축 경계에 의한 버블 클리핑을 비활성화
+            )
+
             ax.text(j, -i, f"{ratio:.1f}%\n{int(cpc):,}원",
                     ha="center", va="center",
-                    fontsize=6, fontweight="bold", zorder=5)
+                    fontsize=6, fontweight="bold", zorder=5,
+                    clip_on=False,  # 텍스트도 동일하게 클리핑 해제
+            )
 
     # 축 라벨 폰트 세팅
     ax.set_xticks(range(n_ages))
@@ -1006,43 +1095,48 @@ def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any
     ax.set_yticks([0, -1])
     ax.set_yticklabels([gender_labels.get(g, g) for g in genders], fontsize=9, fontweight="bold")
     
-    ax.set_xlim(-0.2, n_ages - 0.8)
-    ax.set_ylim(-1.55, 0.5)
+    ax.set_xlim(-0.52, n_ages - 0.48)
+    ax.set_ylim(-1.65, 0.65)
 
     legend_els = [
         Patch(facecolor=COLOR_MAIN, label="메인타겟"),
         Patch(facecolor=COLOR_MID, label="중간타겟"),
         Patch(facecolor=COLOR_AVOID, label="기피타겟"),
     ]
-    
     leg = ax.legend(
-        handles=legend_els,
-        loc='upper left',
-        bbox_to_anchor=(0, -0.12),
-        ncol=3,
-        fontsize=7,
-        frameon=False,
-        borderpad=0,
-        handletextpad=0.4,
-        title="[색상범례]",
-        title_fontproperties={'weight': 'bold', 'size': 7.5}
-    )
+    handles=legend_els,
+    loc='lower left',                      # 기준점: 좌하단
+    bbox_to_anchor=(0.0, -0.28),           # axes 좌표 기준, Y=-0.28로 고정
+    bbox_transform=ax.transAxes,           # axes 비율 좌표계 기준
+    ncol=3,
+    fontsize=5,
+    frameon=False,
+    borderpad=0,
+    handletextpad=0.4,
+    title="[색상범례]",
+    title_fontproperties={'weight': 'bold', 'size': 5}
+)
     leg._legend_box.align = "left"
+    leg.get_title().set_ha("left")
 
-    ax.text(0, -0.32,
-            "원 크기 = 광고비 비중(%)\n원 안 숫자 = CPC",
-            transform=ax.transAxes,
-            ha="left", va="top",
-            fontsize=7, color="#555555", linespacing=1.6)
+    ax.text(
+        0.52, -0.28,                           # x: 색상범례 우측 공간, y: 범례와 동일 기준
+        "원 크기 = 광고비 비중(%)\n원 안 숫자 = CPC",
+        transform=ax.transAxes,
+        ha="left", va="top",
+        fontsize=5, color="#555555", linespacing=1.6
+    )
 
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.tick_params(length=0)
 
     buf = io.StringIO()
-    # 💡 여백을 타이트하게 깎아서 내보냅니다.
-    fig.savefig(buf, format="svg", bbox_inches="tight", pad_inches=0.05)
+
+    fig.savefig(buf, format="svg")
     plt.close(fig)
+    plt.rcParams["svg.fonttype"] = "path"
+
     svg = buf.getvalue()
     idx = svg.find("<svg")
     return svg[idx:] if idx != -1 else svg
@@ -1060,7 +1154,8 @@ def render_dataset(dataset: Dict[str, Any], color_map: Dict[str, Any], **kwargs)
         "bubble": render_bubble_chart,
         "table": render_table_chart,
         "content_card": render_content_card,
-        "reaction_card": render_reaction_card,        # ← 추가
+        "reaction_card": render_reaction_bar,
+        "reaction_bar":  render_reaction_bar,          # ← 추가
         "target_bubble":  render_target_spend_bubble, # ← 추가
     }
 
@@ -1663,7 +1758,9 @@ def _load_thumbnail_array(path: str):
         # 정사각형 크롭 (중앙)
         w, h = img.size
         target_ratio = 4 / 5
-        
+        img_ratio = w / h
+
+
         if img_ratio > target_ratio:
             # 가로가 너무 길면 양옆을 자름
             new_w = int(h * target_ratio)
@@ -1689,7 +1786,9 @@ def _draw_thumbnail_cell(ax, img_array, label_text: str = "", bg_color: str = "#
     """
     ax.axis("off")
     if img_array is not None:
-        ax.imshow(img_array, aspect="auto")
+        # aspect="equal"로 변경하여 이미지 종횡비를 유지.
+        # 셀 크기에 맞게 중앙 정렬(extent 미지정 시 기본값)로 렌더링된다.
+        ax.imshow(img_array, aspect="equal")
     else:
         # placeholder: 배경 색상 + 텍스트
         ax.set_facecolor(bg_color)
@@ -1757,6 +1856,8 @@ def render_ctr_follows_quadrant_chart(
     ctr_median: float,
     follows_median: float,
 ) -> str:
+    ctr_mean     = ctr_median
+    follows_mean = follows_median
     """
     CTR × 팔로우 4사분면 스캐터 플롯 + K-Means 대표 콘텐츠 썸네일 레이아웃.
     """
@@ -1784,13 +1885,12 @@ def render_ctr_follows_quadrant_chart(
     }
 
     def _quad_label(row):
-        high_ctr  = row["ctr"]     >= ctr_median
-        high_fol  = row["follows"] >= follows_median
-        if   high_ctr and high_fol:  return "Q1"
-        elif not high_ctr and high_fol: return "Q2"
+        high_ctr = row["ctr"]     > ctr_mean      # 기존 >= 에서 > 로 변경
+        high_fol = row["follows"] > follows_mean  # 기존 복합 조건에서 단순 > 로 통일
+        if   high_ctr and high_fol:      return "Q1"
+        elif not high_ctr and high_fol:  return "Q2"
         elif not high_ctr and not high_fol: return "Q3"
         else:                            return "Q4"
-
     df["quad"] = df.apply(_quad_label, axis=1)
 
     quad_reps = {}
@@ -1842,14 +1942,18 @@ def render_ctr_follows_quadrant_chart(
             if v <= y_max: _add_tick(y_ticks, v)
 
     #  차트 기본 사이즈
-    fig = plt.figure(figsize=(20, 10), facecolor="white")
+    fig = plt.figure(figsize=(22, 10), facecolor="white")
 
     outer_gs = gridspec.GridSpec(
-        1, 3, figure=fig, width_ratios=[2.5, 3.5, 2],
+        1, 3, figure=fig,
+        width_ratios=[2.5, 3.5, 2.5],         # 좌우 패널 동일 비율로 수정
         wspace=0.06, left=0.03, right=0.97, top=0.91, bottom=0.09,
     )
 
-    inner_h = [0.12, 1.3, 0.12, 1]
+    # thumbnail 행 비율 1.3/1.0의 차이를 1.2/1.2로 균등화하여
+    # Q2/Q3와 Q1/Q4의 썸네일 높이를 동일하게 유지한다.
+    inner_h = [0.18, 1.2, 0.18, 1.2]
+
     left_inner  = outer_gs[0, 0].subgridspec(4, 2, height_ratios=inner_h, hspace=0.15, wspace=0.08)
     right_inner = outer_gs[0, 2].subgridspec(4, 2, height_ratios=inner_h, hspace=0.15, wspace=0.08)
 

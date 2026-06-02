@@ -9,7 +9,7 @@ from scripts.processor import (
     get_account_name, get_active_ad_count, get_total_content_count,
     get_ad_period, get_content_period, get_total_keyword_count,
     get_instagram_followers, get_ctr_data, get_ctr_monthly_data, get_organic_data, get_organic_monthly_data, get_imp_threshold,
-    get_content_ctr_data, get_a_content_target_ctr_data, get_profile_visits_monthly, get_content_reaction_data,
+    get_content_ctr_data, get_a_content_target_ctr_data, get_profile_visits_monthly, get_content_reaction_data, get_reaction_metric_avg,
     get_target_avg_imp_ctr, get_target_avg_imp_ctr_threshold,
     get_raw_keyword_performance, filter_keywords_by_pos, get_overall_ctr,
     get_strategic_performance,get_essence_target_performance,get_variable_target_performance,
@@ -19,7 +19,7 @@ from scripts.processor import (
     has_revenue_data, get_spend_and_revenue_weekly, get_spend_and_revenue_monthly,  # 광고/매출금액 추가
     has_follower_demographics_data, get_follower_demographics_latest_date, get_demographics_ratio, get_follower_age_gender_known_only, get_age_known_unknown_by_age, get_follower_age_gender_distribution,  # 팔로워 인구통계 추가
     get_target_spend_distribution, 
-    get_ctr_follows_scatter_data, get_prev_quarter_ctr_follows_medians, # ← 추가
+    get_ctr_follows_scatter_data, get_prev_quarter_ctr_follows_means, # ← 추가
 )
 
 def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", avoid_age="", avoid_gender="", currency=""):
@@ -565,24 +565,30 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
     # 6. 반응 기반 콘텐츠 성과 (지표별 TOP/BOTTOM 3, 6페이지)
     print("반응 기반 콘텐츠 성과 생성 중...")
     for metric in ['likes', 'saves', 'shares']:
+        metric_avg = get_reaction_metric_avg(target_id, start, end, metric=metric)
+
         for is_top in [True, False]:
             suffix = "top" if is_top else "bottom"
             reaction_contents = get_content_reaction_data(
                 target_id, start, end, is_top=is_top, metric=metric
             )
-            # CTR 콘텐츠 카드와 동일하게 연령/성별 CTR 상세 추가
-            for item in reaction_contents:
-                detail_df = get_a_content_target_ctr_data(item["ad_id"], start, end)
-                if detail_df is not None:
-                    item["target_details"] = detail_df.to_dict(orient="records")
-                else:
-                    item["target_details"] = []
+
+            # metric 컬럼 이름 매핑: DB 반환 키와 일치시킴
+            metric_key_map = {
+                'likes':  'total_likes',
+                'saves':  'total_saves',
+                'shares': 'total_shares',
+            }
+            metric_col = metric_key_map[metric]
+            
 
             final_report["datasets"][f"reaction_{metric}_{suffix}"] = {
-                "kind": "reaction_card",
-                "title": f"반응 {suffix} 콘텐츠 ({metric})",
-                "metric": metric,
-                "items": reaction_contents
+                "kind":       "reaction_bar",   # 기존 "reaction_card"에서 변경
+                "title":      f"반응 {suffix} 콘텐츠 ({metric})",
+                "metric":     metric,           # 'likes' | 'saves' | 'shares'
+                "metric_col": metric_col,       # 실제 데이터 키 이름
+                "metric_avg": metric_avg,
+                "items":      reaction_contents # 썸네일·업로드일·수치 포함 리스트
             }
 
 
@@ -603,17 +609,17 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
 
     # ── CTR × 팔로우 산점도 데이터 ───────────────────────────
     scatter_rows = get_ctr_follows_scatter_data(target_id, start, end)
-    prev_medians = get_prev_quarter_ctr_follows_medians(target_id, start)
+    prev_means = get_prev_quarter_ctr_follows_means(target_id, start)
 
     if scatter_rows:
         final_report["ctr_follows_scatter"] = {
-            "rows":           scatter_rows,
-            "ctr_median":     prev_medians.get("ctr_median"),
-            "follows_median": prev_medians.get("follows_median"),
+            "rows":        scatter_rows,
+            "ctr_mean":    prev_means.get("ctr_mean"),      # median → mean
+            "follows_mean": prev_means.get("follows_mean"), # median → mean
         }
     else:
         final_report["ctr_follows_scatter"] = {
-            "rows": [], "ctr_median": None, "follows_median": None
+            "rows": [], "ctr_mean": None, "follows_mean": None
         }
 
     # --- [추가] 별첨 자료용 키워드 상세 분석 (4페이지 분량) ---

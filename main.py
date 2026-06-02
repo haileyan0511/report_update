@@ -506,13 +506,13 @@ def run():
     start_time = time.time()
 
     config = {
-        "target_id": 12,
-        "fb_ad_account_id":"act_1008886398030550",
-        "start":"2026-02-24",
-        "end": "2026-05-24",
-        "main_age": ["18-24", "25-34"],
+        "target_id": 25,
+        "fb_ad_account_id":"act_4260950964221595",
+        "start":"2026-03-30",
+        "end": "2026-05-30",
+        "main_age": ["35-44", "25-34"],
         "main_gender": "",
-        "avoid_age": ["55-64", "65+"],
+        "avoid_age": "",
         "avoid_gender": "",
         "currency": ""  # ""=원화, "dollar"=달러
     }
@@ -534,7 +534,7 @@ def run():
                     avoid_age=avoid_age, avoid_gender=avoid_gender, currency=currency)
     
     report_path = "json_reports/integrated_report.json"
-    theme_color = "#081F2C"
+    theme_color = "#FF4C0A"
 
     report_json = _load_report(report_path)
     _apply_display_predicate_suffix(report_json)
@@ -763,39 +763,52 @@ def run():
     # ── CTR × 팔로우 산점도 ───────────────────────────────────
     scatter_block    = report_json.get("ctr_follows_scatter", {})
     scatter_rows     = scatter_block.get("rows", [])
-    scatter_ctr_med  = scatter_block.get("ctr_median")
-    scatter_fol_med  = scatter_block.get("follows_median")
+    scatter_ctr_mean    = scatter_block.get("ctr_mean")
+    scatter_fol_mean    = scatter_block.get("follows_mean")
 
     # 썸네일 S3 → 로컬 다운로드 (기존 materialize 패턴 동일하게 적용)
     _materialize_content_thumbnails(scatter_rows)
 
-    # 중앙값이 없으면 현재 기간 데이터의 중앙값으로 대체
-    if scatter_rows and (scatter_ctr_med is None or scatter_fol_med is None):
-        import pandas as _pd_tmp
-        _df_tmp = _pd_tmp.DataFrame(scatter_rows)
-        scatter_ctr_med = float(_df_tmp["ctr"].median())     if scatter_ctr_med is None  else scatter_ctr_med
-        scatter_fol_med = float(_df_tmp["follows"].median()) if scatter_fol_med is None  else scatter_fol_med
-
+    # 값이 없으면 현재 기간 데이터의 평균값으로 대체
     quadrant_chart_b64 = ""
-    if scatter_rows and scatter_ctr_med is not None and scatter_fol_med is not None:
-        quadrant_chart_b64 = render_ctr_follows_quadrant_chart(
-            scatter_data   = scatter_rows,
-            ctr_median     = scatter_ctr_med,
-            follows_median = scatter_fol_med,
-        )
+    # 1. 기준점이 None인 경우 현재 데이터(scatter_rows)로 평균값 직접 계산
+    # 테스트 끝나면 바로 아랫줄 끝 None 뒤에 and scatter_fol_mean is not None 붙이기 -> 현재데이터로 평균값 대체 안함
+    # 그리고 나서 df_scatter 부터 2번주석 제목까지 삭제
+    if scatter_ctr_mean is None or scatter_fol_mean is None:
+        df_scatter = pd.DataFrame(scatter_rows)
+        df_scatter["ctr"] = pd.to_numeric(df_scatter["ctr"], errors="coerce").fillna(0.0)
+        df_scatter["follows"] = pd.to_numeric(df_scatter["follows"], errors="coerce").fillna(0.0)
+            
+        scatter_ctr_mean = float(df_scatter["ctr"].mean())
+        scatter_fol_mean = float(df_scatter["follows"].mean())
 
+        # 2. 기준점이 확보되었으므로 차트 렌더링 실행
+        quadrant_chart_b64 = render_ctr_follows_quadrant_chart(
+            scatter_data  = scatter_rows,
+            ctr_median    = scatter_ctr_mean, 
+            follows_median= scatter_fol_mean,
+        )
 
     # 반응 기반 콘텐츠 썸네일 처리 (추가)
     reaction_datasets = {}
     for metric in ['likes', 'saves', 'shares']:
         for suffix in ['top', 'bottom']:
             key = f"reaction_{metric}_{suffix}"
-            rendered = render_dataset(datasets.get(key), color_map)
-            if not isinstance(rendered, list):
-                rendered = []
-            _materialize_content_thumbnails(rendered)
-            reaction_datasets[key] = rendered
+            ds  = datasets.get(key)
+            if not ds:
+                reaction_datasets[key] = {"cards": [], "chart_svg": ""}
+                continue
 
+            rendered = render_dataset(ds, color_map)
+
+            if isinstance(rendered, dict):
+                # render_reaction_bar 반환값: {"items": [...], "chart_svg": "..."}
+                # 썸네일 S3 다운로드는 cards 리스트에 대해 수행한다.
+                _materialize_content_thumbnails(rendered.get("cards", []))
+                reaction_datasets[key] = rendered
+            else:
+                # 예상치 못한 반환 타입 방어
+                reaction_datasets[key] = {"cards": [], "chart_svg": ""}
 
 
     # 타겟별 광고비 버블
@@ -867,20 +880,22 @@ def run():
             "bottom": bottom_items,
             "overall_ctr": overall_ctr,
             # 반응 기반 콘텐츠 (6종)
-            "reaction_likes_top":    reaction_datasets.get("reaction_likes_top",    []),
-            "reaction_likes_bottom": reaction_datasets.get("reaction_likes_bottom", []),
-            "reaction_saves_top":    reaction_datasets.get("reaction_saves_top",    []),
-            "reaction_saves_bottom": reaction_datasets.get("reaction_saves_bottom", []),
-            "reaction_shares_top":   reaction_datasets.get("reaction_shares_top",   []),
-            "reaction_shares_bottom":reaction_datasets.get("reaction_shares_bottom",[]),
+            "reaction_likes_top":     reaction_datasets.get("reaction_likes_top",     {"cards": [], "chart_svg": ""}),
+            "reaction_likes_bottom":  reaction_datasets.get("reaction_likes_bottom",  {"cards": [], "chart_svg": ""}),
+            "reaction_saves_top":     reaction_datasets.get("reaction_saves_top",     {"cards": [], "chart_svg": ""}),
+            "reaction_saves_bottom":  reaction_datasets.get("reaction_saves_bottom",  {"cards": [], "chart_svg": ""}),
+            "reaction_shares_top":    reaction_datasets.get("reaction_shares_top",    {"cards": [], "chart_svg": ""}),
+            "reaction_shares_bottom": reaction_datasets.get("reaction_shares_bottom", {"cards": [], "chart_svg": ""}),
         },
         "target_bubble": {"chart": target_bubble_svg},                  # ← 추가
         "charts": charts,
+       
         "quadrant_chart": {
-            "image":          quadrant_chart_b64,
-            "ctr_median":     scatter_ctr_med,
-            "follows_median": scatter_fol_med,
+            "image":       quadrant_chart_b64,
+            "ctr_mean":    scatter_ctr_mean,     # median → mean
+            "follows_mean": scatter_fol_mean,    # median → mean
         },
+
         "annotations": {
             "ctr": [],
             "organic": [],
