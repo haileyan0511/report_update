@@ -924,30 +924,27 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
         b = int(hex_color[4:6], 16) / 255.0
         return (r, g, b, alpha)
     
-    content_values = values[:-1]
+    content_values = values
 
     if not content_values:
-        highlight_idx = -1  # 강조할 인덱스 없음
+        highlight_val = None
     elif is_top:
-        # 상위 차트: 값이 가장 높은 인덱스를 강조
-        max_val = max(content_values)
-        highlight_idx = content_values.index(max_val)
+        # 상위 차트: 수치가 max_value와 동일한 막대 전부를 강조
+        # index() 방식은 동점 첫 번째만 반환하므로 값 자체를 저장하여
+        # 루프에서 모든 동점 막대에 동일하게 적용한다.
+        highlight_val = max(content_values)
     else:
-        # 하위 차트: 값이 가장 낮은 인덱스를 강조
-        min_val = min(content_values)
-        highlight_idx = content_values.index(min_val)
+        # 하위 차트: 수치가 min_value와 동일한 막대 전부를 강조
+        highlight_val = min(content_values)
 
-    # 동점 처리: 강조 조건(max/min)과 동일한 값을 가진 모든 인덱스에 100% 불투명도 적용
-    highlight_val = content_values[highlight_idx] if highlight_idx >= 0 else None
     bar_colors = []
-    for i, v in enumerate(content_values):
+    for v in content_values:
         if highlight_val is not None and v == highlight_val:
             # 강조 막대: 브랜드 컬러 불투명도 100%
             bar_colors.append(_hex_to_rgba(base_hex, 1.0))
         else:
-            # 일반 막대: 브랜드 컬러 불투명도 40%
+            # 비강조 막대: 브랜드 컬러 불투명도 40%
             bar_colors.append(_hex_to_rgba(base_hex, 0.4))
-
 
     plt.rcParams["svg.fonttype"] = "none"
 
@@ -955,7 +952,7 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     fig, ax = plt.subplots(figsize=(7, fig_h))
     fig.patch.set_alpha(0)
     ax.patch.set_alpha(0)
-    fig.subplots_adjust(left=0.26, right=0.88, top=0.95, bottom=0.12)
+    fig.subplots_adjust(left=0.0, right=1.0, top=0.95, bottom=0.12)
 
     y_pos = list(range(n - 1, -1, -1))   # 위→아래: 콘텐츠1 ~ 콘텐츠5 ~ 평균
 
@@ -966,8 +963,21 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
         edgecolor="none",
     )
 
-    # 막대 끝에 정확한 수치 표시
-    x_max = max(values) if values else 1
+    # ── x축 기준값 결정 ────────────────────────────────────────────────────
+    # x_scale_max: JSON에서 전달된 공유 기준값 (상위/하위 차트 공통 사용).
+    # 이 값이 없거나 0이면 현재 데이터의 최대값을 폴백으로 사용한다.
+    # 단, 폴백도 0인 경우 division by zero를 막기 위해 최소값 1을 보장한다.
+    x_scale_max_from_json = float(dataset.get("x_scale_max") or 0)
+    x_data_max = max(values) if values else 0
+    if x_scale_max_from_json > 0:
+        # JSON에서 공유 기준값이 전달된 경우: 해당 값을 우선 사용
+        x_scale_ref = x_scale_max_from_json
+    elif x_data_max > 0:
+        # JSON 값이 없으면 현재 데이터 최대값으로 대체
+        x_scale_ref = x_data_max
+    else:
+        # 모든 값이 0인 경우: 최소값 1 보장 (division by zero 방지)
+        x_scale_ref = 1
 
     # 지표별 유니코드 아이콘 매핑
     metric_icon_map = {
@@ -979,14 +989,16 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
 
     for bar, val in zip(bars, values):
         ax.text(
-            bar.get_width() + x_max * 0.015,   # 막대 끝에서 약간 오른쪽
+            # 막대 끝 오프셋을 x_scale_ref 기준으로 계산하여 하위 차트에서
+            # 수치가 작아도 텍스트가 과도하게 우측으로 밀리지 않도록 한다.
+            bar.get_width() + x_scale_ref * 0.015,
             bar.get_y() + bar.get_height() / 2,
-            f"{metric_icon} {int(val):,}",       # 아이콘 + 수치
+            f"{metric_icon} {int(val):,}",
             va="center", ha="left",
             fontsize=7, color="#333333",
-            zorder=10,                           # 평균 점선보다 위에 렌더링
+            zorder=10,
             bbox=dict(
-                facecolor=(1.0, 1.0, 1.0, 0.5), # 반투명 흰색 배경 (R,G,B,alpha)
+                facecolor=(1.0, 1.0, 1.0, 0.5),
                 edgecolor="none",
                 pad=1.5,
                 boxstyle="round,pad=0.15",
@@ -996,9 +1008,10 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     ax.set_yticklabels(labels, fontsize=7, color="#333333")
     ax.yaxis.set_tick_params(length=0)
 
-
     ax.set_xlabel(metric_label, fontsize=8, color="#555555", labelpad=4)
-    ax.set_xlim(0, x_max * 1.18)   # 수치 텍스트 공간 확보
+    # x축 상한을 x_scale_ref 기준으로 설정한다.
+    # 1.18 배율은 수치 텍스트가 막대 바깥에 표시될 공간을 확보하기 위함이다.
+    ax.set_xlim(0, x_scale_ref * 1.18)   # 수치 텍스트 공간 확보
     ax.xaxis.set_visible(False)
     ax.grid(False)
 
@@ -1010,15 +1023,13 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     # 전체 평균 세로 점선 렌더링.
     overall_avg_val = float(dataset.get("overall_avg") or dataset.get("metric_avg") or 0)
 
-    # x_max가 0이면 점선 위치 계산에서 division by zero가 발생할 수 있으므로
-    # x_max를 최소 1로 보정한 뒤 평균선 X 좌표를 결정한다.
-    safe_x_max = x_max if x_max > 0 else 1
-
-    # 평균값이 0이면 차트 좌측(x=0)에 점선을 고정한다.
-    avg_line_x = overall_avg_val if overall_avg_val > 0 else 0
-
-    # 평균값이 safe_x_max를 초과하면 차트 범위 안쪽으로 클리핑한다.
-    avg_line_x = min(avg_line_x, safe_x_max)
+    if x_scale_ref > 1 and overall_avg_val > 0:
+        # 정상 케이스: 평균값을 데이터 좌표로 직접 사용
+        avg_line_x = overall_avg_val
+    else:
+        # x_scale_ref가 폴백(1)이거나 overall_avg_val이 0인 경우:
+        # 차트 좌측 시작점(x=0)에 점선을 고정한다.
+        avg_line_x = 0
 
     # overall_avg가 0인 경우에도 "평균 : 0" 텍스트와 점선을 항상 표시한다.
     ax.axvline(
@@ -1028,10 +1039,11 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
         linewidth=1.2,
         zorder=5,
     )
+    # "평균 : N" 텍스트는 overall_avg가 0이어도 반드시 표시한다.
     avg_label_text = f"평균 : {int(round(overall_avg_val)):,}"
     ax.text(
-        avg_line_x,                     # X 위치: 점선과 동일
-        0,                              # Y 위치: axes 하단 (get_xaxis_transform 기준)
+        avg_line_x,                     # X 위치: axvline과 동일한 x 좌표
+        0,                              # Y 위치: get_xaxis_transform 기준 axes 하단
         avg_label_text,
         ha="center",
         va="top",

@@ -4,7 +4,7 @@
         "period": "2026-03-30 ~ 2026-05-25",
         "period_ads": "2026-03-30 09:00:00+00:00 ~ 2026-05-10",
         "period_contents": "2026-02-23 ~ 2026-05-08",
-        "generated_at": "2026-06-04 00:49:30"
+        "generated_at": "2026-06-04 01:28:01"
     },
     "currency": "",
     "currency_symbol": "원",
@@ -1582,6 +1582,7 @@
             "overall_avg": 12.0,
             "metric_avg": 12.0,
             "is_top": true,
+            "x_scale_max": 21.0,
             "items": [
                 {
                     "ad_id": 8385,
@@ -1668,6 +1669,7 @@
             "overall_avg": 12.0,
             "metric_avg": 12.0,
             "is_top": false,
+            "x_scale_max": 21.0,
             "items": [
                 {
                     "ad_id": 8390,
@@ -1754,6 +1756,7 @@
             "overall_avg": 5.9,
             "metric_avg": 5.9,
             "is_top": true,
+            "x_scale_max": 10.0,
             "items": [
                 {
                     "ad_id": 4460,
@@ -1840,6 +1843,7 @@
             "overall_avg": 5.9,
             "metric_avg": 5.9,
             "is_top": false,
+            "x_scale_max": 10.0,
             "items": [
                 {
                     "ad_id": 4462,
@@ -1926,6 +1930,7 @@
             "overall_avg": 0.5,
             "metric_avg": 0.5,
             "is_top": true,
+            "x_scale_max": 2.0,
             "items": [
                 {
                     "ad_id": 8385,
@@ -2012,6 +2017,7 @@
             "overall_avg": 0.5,
             "metric_avg": 0.5,
             "is_top": false,
+            "x_scale_max": 2.0,
             "items": [
                 {
                     "ad_id": 4461,

@@ -599,20 +599,39 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
     for metric in ['likes', 'saves', 'shares']:
         overall_avg = get_reaction_metric_avg(target_id, start, end, metric=metric)
 
+    # metric 컬럼 이름 매핑: DB 반환 키와 일치시킴
+        metric_key_map = {
+            'likes':  'total_likes',
+            'saves':  'total_saves',
+            'shares': 'total_shares',
+        }
+        metric_col = metric_key_map[metric]
+
+        # ── x_scale_max 산출 (상위 데이터를 기준으로 1회만 계산) ──────────
+        # x_scale_max는 상위/하위 차트가 공유하는 x축 최대 기준값이다.
+        # 상위 5개 콘텐츠 수치의 최대값과 overall_avg 중 더 큰 값을 사용한다.
+        # 이렇게 하면 하위 차트에서 막대가 과장되어 늘어나는 현상을 방지한다.
+        top_contents_for_scale = get_content_reaction_data(
+            target_id, start, end, is_top=True, metric=metric
+        )
+        top_values_for_scale = [
+            float(item.get(metric_col, 0) or 0)
+            for item in (top_contents_for_scale or [])
+        ]
+        # overall_avg와 상위 콘텐츠 최대값 중 더 큰 쪽을 기준으로 삼는다.
+        # 모두 0이면 x_scale_max는 0 (visualizer.py에서 예외 처리)
+        x_scale_max = max(
+            max(top_values_for_scale) if top_values_for_scale else 0,
+            float(overall_avg or 0)
+        )
+        # ────────────────────────────────────────────────────────────────────
+
         for is_top in [True, False]:
             suffix = "top" if is_top else "bottom"
             reaction_contents = get_content_reaction_data(
                 target_id, start, end, is_top=is_top, metric=metric
             )
 
-            # metric 컬럼 이름 매핑: DB 반환 키와 일치시킴
-            metric_key_map = {
-                'likes':  'total_likes',
-                'saves':  'total_saves',
-                'shares': 'total_shares',
-            }
-            metric_col = metric_key_map[metric]
-            
             for item in (reaction_contents or []):
                 raw_caption = str(item.get("caption") or "").strip()
                 item["caption_label"] = _parse_korean_caption(raw_caption)
@@ -624,16 +643,18 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
                 else:
                     item["ctr"] = float(raw_ctr)
 
-
             final_report["datasets"][f"reaction_{metric}_{suffix}"] = {
-                "kind":       "reaction_bar",   # 기존 "reaction_card"에서 변경
-                "title":      f"반응 {suffix} 콘텐츠 ({metric})",
-                "metric":     metric,           # 'likes' | 'saves' | 'shares'
-                "metric_col": metric_col,       # 실제 데이터 키 이름
-                "overall_avg": overall_avg,       # 전체 기간 전체 콘텐츠 실제 평균
-                "metric_avg":  overall_avg,       # 하위 호환: visualizer.py 기존 키도 유지
-                "is_top":      is_top,            # 상위/하위 구분 플래그 (막대 색상 로직용)
-                "items":      reaction_contents # 썸네일·업로드일·수치 포함 리스트
+                "kind":         "reaction_bar",
+                "title":        f"반응 {suffix} 콘텐츠 ({metric})",
+                "metric":       metric,
+                "metric_col":   metric_col,
+                "overall_avg":  overall_avg,
+                "metric_avg":   overall_avg,       # 하위 호환 키 유지
+                "is_top":       is_top,
+                # 상위/하위 차트 양쪽 모두 이 값을 x축 최대 기준으로 사용한다.
+                # 하위 차트가 이 키를 읽어 x축을 상위 차트와 동일하게 맞춘다.
+                "x_scale_max":  x_scale_max,
+                "items":        reaction_contents
             }
 
 
