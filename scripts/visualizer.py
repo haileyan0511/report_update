@@ -899,33 +899,59 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     values = []
 
     for idx, item in enumerate(items, 1):
-        caption = str(item.get("caption") or "").strip()
+        caption_label = str(item.get("caption_label") or "").strip()
 
-        if caption:
-            # caption 앞 7글자 추출 후 말줄임표 부착.
-            # 7글자 이하면 그대로 사용하고 말줄임표를 붙이지 않음.
-            label = caption[:7] + "..." if len(caption) > 7 else caption
+        if caption_label:
+            label = caption_label
         else:
-            # caption이 없는 경우 업로드 날짜로 대체
+            # caption_label이 없는 경우 (구버전 데이터 호환): 업로드 날짜로 대체
             label = str(item.get("uploaded_at") or f"콘텐츠 {idx}")
         
         labels.append(label)
         values.append(float(item.get(metric_col, 0) or 0))
 
-    # 전체 평균 행을 최하단에 추가
-    labels.append("전체 평균")
-    values.append(float(metric_avg))
-
     n = len(labels)
 
-    # 막대 색상: 콘텐츠 행은 base색, 평균 행은 보조색
-    bar_color   = color_map.get("base", "#333333")
-    avg_color   = "#aaaaaa"
-    bar_colors  = [bar_color] * (n - 1) + [avg_color]
+    is_top = dataset.get("is_top", True)
+
+    base_hex = color_map.get("base", "#4B3B8C")
+    
+    def _hex_to_rgba(hex_color: str, alpha: float):
+        """HEX 색상 문자열을 matplotlib용 RGBA 튜플로 변환한다."""
+        hex_color = hex_color.lstrip("#")
+        r = int(hex_color[0:2], 16) / 255.0
+        g = int(hex_color[2:4], 16) / 255.0
+        b = int(hex_color[4:6], 16) / 255.0
+        return (r, g, b, alpha)
+    
+    content_values = values[:-1]
+
+    if not content_values:
+        highlight_idx = -1  # 강조할 인덱스 없음
+    elif is_top:
+        # 상위 차트: 값이 가장 높은 인덱스를 강조
+        max_val = max(content_values)
+        highlight_idx = content_values.index(max_val)
+    else:
+        # 하위 차트: 값이 가장 낮은 인덱스를 강조
+        min_val = min(content_values)
+        highlight_idx = content_values.index(min_val)
+
+    # 동점 처리: 강조 조건(max/min)과 동일한 값을 가진 모든 인덱스에 100% 불투명도 적용
+    highlight_val = content_values[highlight_idx] if highlight_idx >= 0 else None
+    bar_colors = []
+    for i, v in enumerate(content_values):
+        if highlight_val is not None and v == highlight_val:
+            # 강조 막대: 브랜드 컬러 불투명도 100%
+            bar_colors.append(_hex_to_rgba(base_hex, 1.0))
+        else:
+            # 일반 막대: 브랜드 컬러 불투명도 40%
+            bar_colors.append(_hex_to_rgba(base_hex, 0.4))
+
 
     plt.rcParams["svg.fonttype"] = "none"
 
-    fig_h = min(2.4, max(1.6, n * 0.34))
+    fig_h = min(2.4, max(1.6, n * 0.40))
     fig, ax = plt.subplots(figsize=(7, fig_h))
     fig.patch.set_alpha(0)
     ax.patch.set_alpha(0)
@@ -942,22 +968,34 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
 
     # 막대 끝에 정확한 수치 표시
     x_max = max(values) if values else 1
+
+    # 지표별 유니코드 아이콘 매핑
+    metric_icon_map = {
+        "likes":  "\u2665",   # ♥ 하트 (좋아요)
+        "saves":  "\u2605",   # ★ 별 (저장)
+        "shares": "\u21a6",   # ↦ 오른쪽 화살표 (공유)
+    }
+    metric_icon = metric_icon_map.get(metric, "")
+
     for bar, val in zip(bars, values):
         ax.text(
             bar.get_width() + x_max * 0.015,   # 막대 끝에서 약간 오른쪽
             bar.get_y() + bar.get_height() / 2,
-            f"{int(val):,}",
+            f"{metric_icon} {int(val):,}",       # 아이콘 + 수치
             va="center", ha="left",
             fontsize=7, color="#333333",
+            zorder=10,                           # 평균 점선보다 위에 렌더링
+            bbox=dict(
+                facecolor=(1.0, 1.0, 1.0, 0.5), # 반투명 흰색 배경 (R,G,B,alpha)
+                edgecolor="none",
+                pad=1.5,
+                boxstyle="round,pad=0.15",
+            ),
         )
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=7, color="#333333")
     ax.yaxis.set_tick_params(length=0)
 
-    # 평균 행 Y축 레이블 색상 강조
-    tick_labels = ax.get_yticklabels()
-    if tick_labels:
-        tick_labels[0].set_color(avg_color)   # y_pos 최소(= 평균 행) 위치
 
     ax.set_xlabel(metric_label, fontsize=8, color="#555555", labelpad=4)
     ax.set_xlim(0, x_max * 1.18)   # 수치 텍스트 공간 확보
@@ -967,8 +1005,47 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    # 콘텐츠 행과 평균 행 사이 구분선
-    ax.axhline(y=0.5, color="#cccccc", linewidth=0.8, linestyle="--")
+
+
+    # 전체 평균 세로 점선 렌더링.
+    overall_avg_val = float(dataset.get("overall_avg") or dataset.get("metric_avg") or 0)
+
+    # x_max가 0이면 점선 위치 계산에서 division by zero가 발생할 수 있으므로
+    # x_max를 최소 1로 보정한 뒤 평균선 X 좌표를 결정한다.
+    safe_x_max = x_max if x_max > 0 else 1
+
+    # 평균값이 0이면 차트 좌측(x=0)에 점선을 고정한다.
+    avg_line_x = overall_avg_val if overall_avg_val > 0 else 0
+
+    # 평균값이 safe_x_max를 초과하면 차트 범위 안쪽으로 클리핑한다.
+    avg_line_x = min(avg_line_x, safe_x_max)
+
+    # overall_avg가 0인 경우에도 "평균 : 0" 텍스트와 점선을 항상 표시한다.
+    ax.axvline(
+        x=avg_line_x,
+        color="#888888",
+        linestyle=(0, (4, 4)),  # 점선: 4pt 실선 + 4pt 공백
+        linewidth=1.2,
+        zorder=5,
+    )
+    avg_label_text = f"평균 : {int(round(overall_avg_val)):,}"
+    ax.text(
+        avg_line_x,                     # X 위치: 점선과 동일
+        0,                              # Y 위치: axes 하단 (get_xaxis_transform 기준)
+        avg_label_text,
+        ha="center",
+        va="top",
+        fontsize=6,
+        color="#888888",
+        zorder=6,
+        bbox=dict(
+            facecolor=(1.0, 1.0, 1.0, 0.5),
+            edgecolor="none",
+            pad=1.5,
+            boxstyle="round,pad=0.2",
+        ),
+        transform=ax.get_xaxis_transform(),
+    )
 
     buf = io.StringIO()
     fig.savefig(buf, format="svg")

@@ -4,7 +4,7 @@
         "period": "2026-03-30 ~ 2026-05-25",
         "period_ads": "2026-03-30 09:00:00+00:00 ~ 2026-05-10",
         "period_contents": "2026-02-23 ~ 2026-05-08",
-        "generated_at": "2026-06-03 03:30:25"
+        "generated_at": "2026-06-04 00:49:30"
     },
     "currency": "",
     "currency_symbol": "원",
@@ -1579,7 +1579,9 @@
             "title": "반응 top 콘텐츠 (likes)",
             "metric": "likes",
             "metric_col": "total_likes",
+            "overall_avg": 12.0,
             "metric_avg": 12.0,
+            "is_top": true,
             "items": [
                 {
                     "ad_id": 8385,
@@ -1593,7 +1595,8 @@
                     "total_saves": 8,
                     "total_comments": 1,
                     "total_reaction": 31,
-                    "ctr": 4.16
+                    "ctr": 4.16,
+                    "caption_label": "강아지와 걷는..."
                 },
                 {
                     "ad_id": 8375,
@@ -1607,7 +1610,8 @@
                     "total_saves": 8,
                     "total_comments": 1,
                     "total_reaction": 31,
-                    "ctr": 5.59
+                    "ctr": 5.59,
+                    "caption_label": "강아지와 걷는..."
                 },
                 {
                     "ad_id": 4460,
@@ -1621,7 +1625,8 @@
                     "total_saves": 10,
                     "total_comments": 0,
                     "total_reaction": 30,
-                    "ctr": 4.31
+                    "ctr": 4.31,
+                    "caption_label": "저녁 산책은 ..."
                 },
                 {
                     "ad_id": 4462,
@@ -1635,7 +1640,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 21,
-                    "ctr": 4.65
+                    "ctr": 4.65,
+                    "caption_label": "주인 꿈을 가..."
                 },
                 {
                     "ad_id": 8377,
@@ -1649,7 +1655,8 @@
                     "total_saves": 6,
                     "total_comments": 0,
                     "total_reaction": 22,
-                    "ctr": 4.07
+                    "ctr": 4.07,
+                    "caption_label": "개린이들을 위..."
                 }
             ]
         },
@@ -1658,7 +1665,9 @@
             "title": "반응 bottom 콘텐츠 (likes)",
             "metric": "likes",
             "metric_col": "total_likes",
+            "overall_avg": 12.0,
             "metric_avg": 12.0,
+            "is_top": false,
             "items": [
                 {
                     "ad_id": 8390,
@@ -1672,7 +1681,8 @@
                     "total_saves": 5,
                     "total_comments": 0,
                     "total_reaction": 12,
-                    "ctr": 3.25
+                    "ctr": 3.25,
+                    "caption_label": "배변 치우고,..."
                 },
                 {
                     "ad_id": 8382,
@@ -1686,7 +1696,8 @@
                     "total_saves": 6,
                     "total_comments": 0,
                     "total_reaction": 15,
-                    "ctr": 5.05
+                    "ctr": 5.05,
+                    "caption_label": "강아지가 오래..."
                 },
                 {
                     "ad_id": 8379,
@@ -1700,7 +1711,8 @@
                     "total_saves": 6,
                     "total_comments": 0,
                     "total_reaction": 15,
-                    "ctr": 4.09
+                    "ctr": 4.09,
+                    "caption_label": "강아지가 오래..."
                 },
                 {
                     "ad_id": 8389,
@@ -1714,7 +1726,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 13,
-                    "ctr": 3.9
+                    "ctr": 3.9,
+                    "caption_label": "산책이 ‘해야..."
                 },
                 {
                     "ad_id": 8374,
@@ -1728,7 +1741,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 12,
-                    "ctr": 3.23
+                    "ctr": 3.23,
+                    "caption_label": "강아지와 함께..."
                 }
             ]
         },
@@ -1737,7 +1751,9 @@
             "title": "반응 top 콘텐츠 (saves)",
             "metric": "saves",
             "metric_col": "total_saves",
+            "overall_avg": 5.9,
             "metric_avg": 5.9,
+            "is_top": true,
             "items": [
                 {
                     "ad_id": 4460,
@@ -1751,7 +1767,8 @@
                     "total_saves": 10,
                     "total_comments": 0,
                     "total_reaction": 30,
-                    "ctr": 4.31
+                    "ctr": 4.31,
+                    "caption_label": "저녁 산책은 ..."
                 },
                 {
                     "ad_id": 8021,
@@ -1765,7 +1782,8 @@
                     "total_saves": 10,
                     "total_comments": 0,
                     "total_reaction": 24,
-                    "ctr": 4.99
+                    "ctr": 4.99,
+                    "caption_label": "강아지와 함께..."
                 },
                 {
                     "ad_id": 8393,
@@ -1779,7 +1797,8 @@
                     "total_saves": 9,
                     "total_comments": 0,
                     "total_reaction": 25,
-                    "ctr": 1.61
+                    "ctr": 1.61,
+                    "caption_label": "따뜻한 날 친..."
                 },
                 {
                     "ad_id": 4459,
@@ -1793,7 +1812,8 @@
                     "total_saves": 9,
                     "total_comments": 0,
                     "total_reaction": 21,
-                    "ctr": 3.95
+                    "ctr": 3.95,
+                    "caption_label": "저희 애기 줄..."
                 },
                 {
                     "ad_id": 8378,
@@ -1807,7 +1827,8 @@
                     "total_saves": 8,
                     "total_comments": 0,
                     "total_reaction": 20,
-                    "ctr": 4.91
+                    "ctr": 4.91,
+                    "caption_label": "강아지가 혼낼..."
                 }
             ]
         },
@@ -1816,7 +1837,9 @@
             "title": "반응 bottom 콘텐츠 (saves)",
             "metric": "saves",
             "metric_col": "total_saves",
+            "overall_avg": 5.9,
             "metric_avg": 5.9,
+            "is_top": false,
             "items": [
                 {
                     "ad_id": 4462,
@@ -1830,7 +1853,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 21,
-                    "ctr": 4.65
+                    "ctr": 4.65,
+                    "caption_label": "주인 꿈을 가..."
                 },
                 {
                     "ad_id": 4306,
@@ -1844,7 +1868,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 15,
-                    "ctr": 3.46
+                    "ctr": 3.46,
+                    "caption_label": "산책이 힘든 ..."
                 },
                 {
                     "ad_id": 4458,
@@ -1858,7 +1883,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 17,
-                    "ctr": 2.31
+                    "ctr": 2.31,
+                    "caption_label": "일본 여행” ..."
                 },
                 {
                     "ad_id": 4461,
@@ -1872,7 +1898,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 15,
-                    "ctr": 3.15
+                    "ctr": 3.15,
+                    "caption_label": "쓰레기봉투 사..."
                 },
                 {
                     "ad_id": 8373,
@@ -1886,7 +1913,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 13,
-                    "ctr": 3.56
+                    "ctr": 3.56,
+                    "caption_label": "그냥 산책이 ..."
                 }
             ]
         },
@@ -1895,7 +1923,9 @@
             "title": "반응 top 콘텐츠 (shares)",
             "metric": "shares",
             "metric_col": "total_shares",
+            "overall_avg": 0.5,
             "metric_avg": 0.5,
+            "is_top": true,
             "items": [
                 {
                     "ad_id": 8385,
@@ -1909,7 +1939,8 @@
                     "total_saves": 8,
                     "total_comments": 1,
                     "total_reaction": 31,
-                    "ctr": 4.16
+                    "ctr": 4.16,
+                    "caption_label": "강아지와 걷는..."
                 },
                 {
                     "ad_id": 8375,
@@ -1923,7 +1954,8 @@
                     "total_saves": 8,
                     "total_comments": 1,
                     "total_reaction": 31,
-                    "ctr": 5.59
+                    "ctr": 5.59,
+                    "caption_label": "강아지와 걷는..."
                 },
                 {
                     "ad_id": 4460,
@@ -1937,7 +1969,8 @@
                     "total_saves": 10,
                     "total_comments": 0,
                     "total_reaction": 30,
-                    "ctr": 4.31
+                    "ctr": 4.31,
+                    "caption_label": "저녁 산책은 ..."
                 },
                 {
                     "ad_id": 8021,
@@ -1951,7 +1984,8 @@
                     "total_saves": 10,
                     "total_comments": 0,
                     "total_reaction": 24,
-                    "ctr": 4.99
+                    "ctr": 4.99,
+                    "caption_label": "강아지와 함께..."
                 },
                 {
                     "ad_id": 8394,
@@ -1965,7 +1999,8 @@
                     "total_saves": 8,
                     "total_comments": 0,
                     "total_reaction": 21,
-                    "ctr": 5.11
+                    "ctr": 5.11,
+                    "caption_label": "강아지가 가지..."
                 }
             ]
         },
@@ -1974,7 +2009,9 @@
             "title": "반응 bottom 콘텐츠 (shares)",
             "metric": "shares",
             "metric_col": "total_shares",
+            "overall_avg": 0.5,
             "metric_avg": 0.5,
+            "is_top": false,
             "items": [
                 {
                     "ad_id": 4461,
@@ -1988,7 +2025,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 15,
-                    "ctr": 3.15
+                    "ctr": 3.15,
+                    "caption_label": "쓰레기봉투 사..."
                 },
                 {
                     "ad_id": 4459,
@@ -2002,7 +2040,8 @@
                     "total_saves": 9,
                     "total_comments": 0,
                     "total_reaction": 21,
-                    "ctr": 3.95
+                    "ctr": 3.95,
+                    "caption_label": "저희 애기 줄..."
                 },
                 {
                     "ad_id": 4304,
@@ -2016,7 +2055,8 @@
                     "total_saves": 6,
                     "total_comments": 0,
                     "total_reaction": 19,
-                    "ctr": 5.42
+                    "ctr": 5.42,
+                    "caption_label": "나갈까? 산책..."
                 },
                 {
                     "ad_id": 4303,
@@ -2030,7 +2070,8 @@
                     "total_saves": 5,
                     "total_comments": 0,
                     "total_reaction": 18,
-                    "ctr": 5.77
+                    "ctr": 5.77,
+                    "caption_label": "손을 놓지 못..."
                 },
                 {
                     "ad_id": 4462,
@@ -2044,7 +2085,8 @@
                     "total_saves": 4,
                     "total_comments": 0,
                     "total_reaction": 21,
-                    "ctr": 4.65
+                    "ctr": 4.65,
+                    "caption_label": "주인 꿈을 가..."
                 }
             ]
         },

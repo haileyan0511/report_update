@@ -19,8 +19,40 @@ from scripts.processor import (
     has_revenue_data, get_spend_and_revenue_weekly, get_spend_and_revenue_monthly,  # 광고/매출금액 추가
     has_follower_demographics_data, get_follower_demographics_latest_date, get_demographics_ratio, get_follower_age_gender_known_only, get_age_known_unknown_by_age, get_follower_age_gender_distribution,  # 팔로워 인구통계 추가
     get_target_spend_distribution, 
-    get_ctr_follows_scatter_data, get_prev_quarter_ctr_follows_means, # ← 추가
+    get_ctr_follows_scatter_data, get_prev_quarter_ctr_follows_means,
 )
+
+import re
+
+def _parse_korean_caption(caption: str, max_chars: int = 7) -> str:
+    """
+    캡션 문자열에서 한글이 처음 등장하는 위치를 찾아,
+    그 위치부터 max_chars(기본 7)글자를 추출하여 반환한다.
+
+    - 한글이 없으면 원문 앞 max_chars 글자를 그대로 사용한다.
+    - 추출 결과가 max_chars를 초과하면 '...'을 붙인다.
+    - 추출 결과가 max_chars 이하면 말줄임 없이 반환한다.
+    - caption이 None 또는 빈 문자열이면 빈 문자열을 반환한다.
+    """
+    if not caption:
+        return ""
+
+    # 한글 유니코드 범위: 가-힣 (완성형 한글)
+    match = re.search(r'[가-힣]', caption)
+
+    if match:
+        # 한글이 처음 등장하는 인덱스부터 슬라이싱
+        start_idx = match.start()
+        text = caption[start_idx:]
+    else:
+        # 한글이 없으면 처음부터 사용
+        text = caption
+
+    if len(text) > max_chars:
+        return text[:max_chars] + "..."
+    return text
+
+
 
 def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", avoid_age="", avoid_gender="", currency=""):
     # 1. 기본 설정 및 파라미터
@@ -565,7 +597,7 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
     # 6. 반응 기반 콘텐츠 성과 (지표별 TOP/BOTTOM 3, 6페이지)
     print("반응 기반 콘텐츠 성과 생성 중...")
     for metric in ['likes', 'saves', 'shares']:
-        metric_avg = get_reaction_metric_avg(target_id, start, end, metric=metric)
+        overall_avg = get_reaction_metric_avg(target_id, start, end, metric=metric)
 
         for is_top in [True, False]:
             suffix = "top" if is_top else "bottom"
@@ -581,13 +613,26 @@ def run(target_id, fb_ad_account_id, start, end, main_age="", main_gender="", av
             }
             metric_col = metric_key_map[metric]
             
+            for item in (reaction_contents or []):
+                raw_caption = str(item.get("caption") or "").strip()
+                item["caption_label"] = _parse_korean_caption(raw_caption)
+
+                raw_ctr = item.get("ctr")
+                if raw_ctr is None or (isinstance(raw_ctr, float) and raw_ctr != raw_ctr):
+                    # float NaN 대응: NaN != NaN 이 True이므로 이 조건으로 검출
+                    item["ctr"] = None
+                else:
+                    item["ctr"] = float(raw_ctr)
+
 
             final_report["datasets"][f"reaction_{metric}_{suffix}"] = {
                 "kind":       "reaction_bar",   # 기존 "reaction_card"에서 변경
                 "title":      f"반응 {suffix} 콘텐츠 ({metric})",
                 "metric":     metric,           # 'likes' | 'saves' | 'shares'
                 "metric_col": metric_col,       # 실제 데이터 키 이름
-                "metric_avg": metric_avg,
+                "overall_avg": overall_avg,       # 전체 기간 전체 콘텐츠 실제 평균
+                "metric_avg":  overall_avg,       # 하위 호환: visualizer.py 기존 키도 유지
+                "is_top":      is_top,            # 상위/하위 구분 플래그 (막대 색상 로직용)
                 "items":      reaction_contents # 썸네일·업로드일·수치 포함 리스트
             }
 
