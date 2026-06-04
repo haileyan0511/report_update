@@ -952,7 +952,7 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     fig, ax = plt.subplots(figsize=(7, fig_h))
     fig.patch.set_alpha(0)
     ax.patch.set_alpha(0)
-    fig.subplots_adjust(left=0.0, right=1.0, top=0.95, bottom=0.12)
+    fig.subplots_adjust(left=0.1, right=1.1, top=0.95, bottom=0.12)
 
     y_pos = list(range(n - 1, -1, -1))   # 위→아래: 콘텐츠1 ~ 콘텐츠5 ~ 평균
 
@@ -1023,12 +1023,15 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
     # 전체 평균 세로 점선 렌더링.
     overall_avg_val = float(dataset.get("overall_avg") or dataset.get("metric_avg") or 0)
 
-    if x_scale_ref > 1 and overall_avg_val > 0:
-        # 정상 케이스: 평균값을 데이터 좌표로 직접 사용
+    if x_scale_max_from_json > 0 and overall_avg_val > 0:
+        # 정상 케이스: overall_avg_val은 이미 데이터 좌표이므로 그대로 사용한다.
+        # ax.set_xlim(0, x_scale_ref * 1.18) 범위 안에 위치하므로 클리핑은 발생하지 않는다.
         avg_line_x = overall_avg_val
     else:
-        # x_scale_ref가 폴백(1)이거나 overall_avg_val이 0인 경우:
-        # 차트 좌측 시작점(x=0)에 점선을 고정한다.
+        # overall_avg_val이 0이거나 모든 수치가 0인 경우:
+        # 막대 시작점과 동일한 데이터 좌표 x=0에 점선을 고정한다.
+        # subplots_adjust(left=0.26) 복원 후 x=0은 axes 좌측 경계이므로
+        # 막대 시작점과 정확히 일치한다.
         avg_line_x = 0
 
     # overall_avg가 0인 경우에도 "평균 : 0" 텍스트와 점선을 항상 표시한다.
@@ -1209,7 +1212,7 @@ def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any
     leg.get_title().set_ha("left")
 
     ax.text(
-        0.52, -0.28,                           # x: 색상범례 우측 공간, y: 범례와 동일 기준
+        0.0, -0.28,                           # x: 색상범례 우측 공간, y: 범례와 동일 기준
         "원 크기 = 광고비 비중(%)\n원 안 숫자 = CPC",
         transform=ax.transAxes,
         ha="left", va="top",

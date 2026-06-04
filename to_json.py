@@ -34,9 +34,11 @@ def _parse_korean_caption(caption: str, max_chars: int = 7) -> str:
     - 추출 결과가 max_chars 이하면 말줄임 없이 반환한다.
     - caption이 None 또는 빈 문자열이면 빈 문자열을 반환한다.
     """
-    if not caption:
+    if not caption or not caption.strip():
         return ""
 
+    caption = caption.strip()
+    
     # 한글 유니코드 범위: 가-힣 (완성형 한글)
     match = re.search(r'[가-힣]', caption)
 
