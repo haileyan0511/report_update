@@ -501,17 +501,16 @@ def export_to_pdf(html_path, output_pdf_path):
     print(f" PDF 저장 완료: {output_pdf_path}")
 
 # 변수 지정 함수
-# target_id 에 account_id
 def run():
     start_time = time.time()
 
     config = {
-        "target_id": 25,
-        "fb_ad_account_id":"act_4260950964221595",
-        "start":"2026-03-30",
-        "end": "2026-05-30",
-        "main_age": ["35-44", "25-34"],
-        "main_gender": "",
+        "target_id": "12", # account_id
+        "fb_ad_account_id":"act_1008886398030550",
+        "start":"2025-10-27",
+        "end": "2026-03-29",
+        "main_age": ["18-24", "25-34"],
+        "main_gender": "female", # male, female
         "avoid_age": "",
         "avoid_gender": "",
         "currency": ""  # ""=원화, "dollar"=달러
@@ -534,7 +533,7 @@ def run():
                     avoid_age=avoid_age, avoid_gender=avoid_gender, currency=currency)
     
     report_path = "json_reports/integrated_report.json"
-    theme_color = "#FF4C0A"
+    theme_color = "#000000"
 
     report_json = _load_report(report_path)
     _apply_display_predicate_suffix(report_json)
@@ -769,25 +768,22 @@ def run():
     # 썸네일 S3 → 로컬 다운로드 (기존 materialize 패턴 동일하게 적용)
     _materialize_content_thumbnails(scatter_rows)
 
-    # 값이 없으면 현재 기간 데이터의 평균값으로 대체
+    # quadrant_chart_b64 초기화: 조건을 통과하지 못하면 빈 문자열 그대로 유지된다.
     quadrant_chart_b64 = ""
-    # 1. 기준점이 None인 경우 현재 데이터(scatter_rows)로 평균값 직접 계산
-    # 테스트 끝나면 바로 아랫줄 끝 None 뒤에 and scatter_fol_mean is not None 붙이기 -> 현재데이터로 평균값 대체 안함
-    # 그리고 나서 df_scatter 부터 2번주석 제목까지 삭제
-    if scatter_ctr_mean is None or scatter_fol_mean is None:
-        df_scatter = pd.DataFrame(scatter_rows)
-        df_scatter["ctr"] = pd.to_numeric(df_scatter["ctr"], errors="coerce").fillna(0.0)
-        df_scatter["follows"] = pd.to_numeric(df_scatter["follows"], errors="coerce").fillna(0.0)
-            
-        scatter_ctr_mean = float(df_scatter["ctr"].mean())
-        scatter_fol_mean = float(df_scatter["follows"].mean())
 
-        # 2. 기준점이 확보되었으므로 차트 렌더링 실행
+    # scatter_fol_mean이 None이거나 0이면 팔로워 지표가 없는 기간이므로 차트를 생성하지 않는다.
+    # - None: 이전 분기 데이터 자체가 존재하지 않는 경우
+    # - 0: 팔로워 지표가 수집되지 않아 평균이 0으로 계산된 경우
+    # 두 조건을 모두 통과한 경우(값이 있고 0보다 큰 경우)에만 차트를 렌더링한다.
+    if scatter_fol_mean is not None and scatter_fol_mean != 0:
         quadrant_chart_b64 = render_ctr_follows_quadrant_chart(
             scatter_data  = scatter_rows,
-            ctr_median    = scatter_ctr_mean, 
+            ctr_median    = scatter_ctr_mean,
             follows_median= scatter_fol_mean,
         )
+
+    # 반응 기반 콘텐츠 썸네일 처리 (추가)
+    reaction_datasets = {}
 
     # 반응 기반 콘텐츠 썸네일 처리 (추가)
     reaction_datasets = {}

@@ -516,52 +516,87 @@ def get_content_reaction_data(account_id, date_start, date_end, is_top=True, met
     }
     order_expr = metric_col_map.get(metric, metric_col_map['total_reaction'])
 
+    outer_order_map = {
+        "ici.likes":  "total_likes",
+        "ici.saved":  "total_saves",
+        "ici.shares": "total_shares",
+        # total_reaction은 복합 표현식이므로 SELECT에서 부여한 별칭 그대로 사용한다.
+        "COALESCE(ici.likes, 0) + COALESCE(ici.shares, 0) + COALESCE(ici.saved, 0)": "total_reaction",
+    }
+    # order_expr와 일치하는 별칭이 없으면 total_reaction을 기본값으로 사용한다.
+    outer_order_expr = outer_order_map.get(order_expr, "total_reaction")
+
+
+
     query = f"""
     SELECT
-        ad.id,
-        ad.fb_ad_id,
-        ig.ig_timestamp                             AS uploaded_at,
-        ig.caption                                  AS caption,   -- 차트 Y축 레이블용 캡션 추가
-        NULLIF(ad.thumb_link, '')                   AS thumbnail,
-        ig.ig_media_type,
-        ici.likes                                   AS total_likes,
-        ici.shares                                  AS total_shares,
-        ici.saved                                   AS total_saves,
-        ici.comments                                AS total_comments,
-        COALESCE(ici.likes, 0)
-            + COALESCE(ici.shares, 0)
-            + COALESCE(ici.saved, 0)                AS total_reaction,
-        (
-        SELECT ROUND(
-            (SUM(apd2.clicks)::numeric / NULLIF(SUM(apd2.impressions), 0)) * 100, 2
-        )
-        FROM ad_performance_daily apd2
-        WHERE apd2.ad_id = ad.id
-          AND apd2.as_of_date >= '{date_start}'
-          AND apd2.as_of_date <= DATE_TRUNC('week', '{date_end}'::date)::date
-        )                                           AS ctr
-    FROM ads ad
-        JOIN ad_sets ads ON ad.ad_set_id = ads.id
-        JOIN campaigns c ON ads.campaign_id = c.id
-        JOIN ig_contents ig
-            ON ad.source_ig_media_id = ig.fb_ig_media_id
-        JOIN LATERAL (
-            SELECT likes, shares, saved, comments
-            FROM ig_content_insights
-            WHERE content_id = ig.id
-            ORDER BY as_of_date DESC
-            LIMIT 1
-        ) ici ON true
-    WHERE ad.account_id = {account_id}
-        AND ig.ig_timestamp IS NOT NULL
-        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date >= '{date_start}'::date
-        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date
-            <= (DATE_TRUNC('week', '{date_end}'::date) - INTERVAL '1 day')::date
-        AND ({account_id} = 3
-            OR c.name ILIKE '%%depart%%'
-            OR c.name LIKE '%%디파트%%'
-            OR c.name ILIKE '%%de;part%%')
-    ORDER BY {order_expr} {order_direction}
+        ad_id,
+        fb_ad_id,
+        uploaded_at,
+        caption,
+        thumbnail,
+        ig_media_type,
+        total_likes,
+        total_shares,
+        total_saves,
+        total_comments,
+        total_reaction,
+        ctr
+    FROM (
+        -- 내부 쿼리: fb_ig_media_id 기준으로 중복을 제거한다.
+        -- DISTINCT ON (ig.fb_ig_media_id) 는 각 Instagram 콘텐츠에 대해
+        -- ORDER BY 절에서 첫 번째로 정렬된 행 1개만 남긴다.
+        -- 같은 콘텐츠를 참조하는 광고가 여러 개여도 지표 기준 최우선 광고 1개만 선택된다.
+        SELECT DISTINCT ON (ig.fb_ig_media_id)
+            ad.id                                           AS ad_id,
+            ad.fb_ad_id,
+            ig.ig_timestamp                                 AS uploaded_at,
+            ig.caption                                      AS caption,
+            NULLIF(ad.thumb_link, '')                       AS thumbnail,
+            ig.ig_media_type,
+            ici.likes                                       AS total_likes,
+            ici.shares                                      AS total_shares,
+            ici.saved                                       AS total_saves,
+            ici.comments                                    AS total_comments,
+            COALESCE(ici.likes, 0)
+                + COALESCE(ici.shares, 0)
+                + COALESCE(ici.saved, 0)                    AS total_reaction,
+            (
+            SELECT ROUND(
+                (SUM(apd2.clicks)::numeric / NULLIF(SUM(apd2.impressions), 0)) * 100, 2
+            )
+            FROM ad_performance_daily apd2
+            WHERE apd2.ad_id = ad.id
+              AND apd2.as_of_date >= '{date_start}'
+              AND apd2.as_of_date <= DATE_TRUNC('week', '{date_end}'::date)::date
+            )                                               AS ctr
+        FROM ads ad
+            JOIN ad_sets ads ON ad.ad_set_id = ads.id
+            JOIN campaigns c ON ads.campaign_id = c.id
+            JOIN ig_contents ig
+                ON ad.source_ig_media_id = ig.fb_ig_media_id
+            JOIN LATERAL (
+                SELECT likes, shares, saved, comments
+                FROM ig_content_insights
+                WHERE content_id = ig.id
+                ORDER BY as_of_date DESC
+                LIMIT 1
+            ) ici ON true
+        WHERE ad.account_id = {account_id}
+            AND ig.ig_timestamp IS NOT NULL
+            AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date >= '{date_start}'::date
+            AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date
+                <= (DATE_TRUNC('week', '{date_end}'::date) - INTERVAL '1 day')::date
+            AND ({account_id} = 3
+                OR c.name ILIKE '%%depart%%'
+                OR c.name LIKE '%%디파트%%'
+                OR c.name ILIKE '%%de;part%%')
+        -- DISTINCT ON 기준 컬럼이 ORDER BY 첫 번째에 와야 한다.
+        -- 그 뒤에 지표 정렬을 추가하면 동일 콘텐츠 중 지표 최우선 행이 선택된다.
+        ORDER BY ig.fb_ig_media_id, {order_expr} {order_direction}
+    ) deduped
+    -- 중복 제거 후 원하는 지표 기준으로 재정렬하여 상위/하위 5개를 선택한다.
+    ORDER BY {outer_order_expr} {order_direction}
     LIMIT 5;
     """
 
@@ -578,7 +613,7 @@ def get_content_reaction_data(account_id, date_start, date_end, is_top=True, met
             thumb_val = str(thumb_val).strip() or None
 
         results.append({
-            'ad_id':          row['id'],
+            'ad_id':          row['ad_id'],
             'fb_ad_id':       row.get('fb_ad_id'),
             'uploaded_at':    row['uploaded_at'].date() if pd.notna(row['uploaded_at']) else None,
             'caption':        str(row.get('caption') or '').strip(),
@@ -613,32 +648,26 @@ def get_reaction_metric_avg(account_id, date_start, date_end, metric='likes'):
 
     query = f"""
     SELECT
-        ROUND(AVG(COALESCE({agg_expr}, 0))::numeric, 1) AS metric_avg
-    FROM ads ad
-        JOIN ad_sets ads ON ad.ad_set_id = ads.id
-        JOIN campaigns c ON ads.campaign_id = c.id
-        JOIN ig_contents ig
-            ON ad.source_ig_media_id = ig.fb_ig_media_id
+        ROUND(AVG(COALESCE({agg_expr}, 0))::numeric, 2) AS metric_avg
+    FROM ad_accounts aa
+        JOIN ig_accounts ia ON ia.id = aa.ig_account_id
+        JOIN ig_contents ic  ON ic.ig_id = ia.id
         JOIN LATERAL (
             SELECT likes, saved, shares
             FROM ig_content_insights
-            WHERE content_id = ig.id
+            WHERE content_id = ic.id
             ORDER BY as_of_date DESC
             LIMIT 1
         ) ici ON true
-    WHERE ad.account_id = {account_id}
-        AND ig.ig_timestamp IS NOT NULL
-        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date >= '{date_start}'::date
-        AND (ig.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date
+    WHERE aa.id = {account_id}
+        AND ic.ig_timestamp IS NOT NULL
+        AND (ic.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date >= '{date_start}'::date
+        AND (ic.ig_timestamp AT TIME ZONE 'Asia/Seoul')::date
             <= (DATE_TRUNC('week', '{date_end}'::date) - INTERVAL '1 day')::date
-        AND ({account_id} = 3
-            OR c.name ILIKE '%%depart%%'
-            OR c.name LIKE '%%디파트%%'
-            OR c.name ILIKE '%%de;part%%');
     """
 
     result = pd.read_sql(query, engine)
-    if result.empty or result['metric_avg'].iloc[0] is None:
+    if result.empty or pd.isna(result['metric_avg'].iloc[0]):
         return 0.0
     return float(result['metric_avg'].iloc[0])
 

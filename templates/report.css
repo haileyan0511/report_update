@@ -599,7 +599,7 @@ body {
   border-radius: 0;
   background: transparent;
   aspect-ratio: 4 / 5;
-  min-height: 0;
+  height: 80mm;
   overflow: hidden;
   display: grid;
   place-items: center;

@@ -887,6 +887,7 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
             "thumbnail":    item.get("thumbnail"),
             "uploaded_at":  item.get("uploaded_at"),
             "ig_media_type": item.get("ig_media_type"),
+            "ctr":           item.get("ctr"),
         }
         for item in items
     ]
@@ -962,6 +963,7 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
         height=0.55,
         edgecolor="none",
     )
+   
 
     # ── x축 기준값 결정 ────────────────────────────────────────────────────
     # x_scale_max: JSON에서 전달된 공유 기준값 (상위/하위 차트 공통 사용).
@@ -1021,57 +1023,55 @@ def render_reaction_bar(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> D
 
 
     # 전체 평균 세로 점선 렌더링.
-    overall_avg_val = float(dataset.get("overall_avg") or dataset.get("metric_avg") or 0)
+    _raw_avg = dataset.get("overall_avg")
+    if _raw_avg is None:
+        _raw_avg = dataset.get("metric_avg")
+    if _raw_avg is None:
+        _raw_avg = 0
+    overall_avg_val = float(_raw_avg)
+
+    avg_label_text = f"평균 : {int(round(overall_avg_val)):,}"
 
     if x_scale_max_from_json > 0 and overall_avg_val > 0:
-        # 정상 케이스: overall_avg_val은 이미 데이터 좌표이므로 그대로 사용한다.
-        # ax.set_xlim(0, x_scale_ref * 1.18) 범위 안에 위치하므로 클리핑은 발생하지 않는다.
-        avg_line_x = overall_avg_val
-    else:
-        # overall_avg_val이 0이거나 모든 수치가 0인 경우:
-        # 막대 시작점과 동일한 데이터 좌표 x=0에 점선을 고정한다.
-        # subplots_adjust(left=0.26) 복원 후 x=0은 axes 좌측 경계이므로
-        # 막대 시작점과 정확히 일치한다.
-        avg_line_x = 0
+        # 평균값이 유효한 경우에만 선과 레이블을 표시
+        ax.axvline(
+            x=overall_avg_val,
+            color="#888888",
+            linestyle=(0, (4, 4)),
+            linewidth=1.2,
+            zorder=5,
+        )
+        ax.text(
+            overall_avg_val,
+            0,
+            avg_label_text,
+            ha="center",
+            va="top",
+            fontsize=6,
+            color="#888888",
+            zorder=6,
+            bbox=dict(
+                facecolor=(1.0, 1.0, 1.0, 0.5),
+                edgecolor="none",
+                pad=1.5,
+                boxstyle="round,pad=0.2",
+            ),
+            transform=ax.get_xaxis_transform(),
+        )
+    # else 분기 제거: 평균이 0이거나 scale이 없으면 선을 그리지 않음
 
-    # overall_avg가 0인 경우에도 "평균 : 0" 텍스트와 점선을 항상 표시한다.
-    ax.axvline(
-        x=avg_line_x,
-        color="#888888",
-        linestyle=(0, (4, 4)),  # 점선: 4pt 실선 + 4pt 공백
-        linewidth=1.2,
-        zorder=5,
-    )
-    # "평균 : N" 텍스트는 overall_avg가 0이어도 반드시 표시한다.
-    avg_label_text = f"평균 : {int(round(overall_avg_val)):,}"
-    ax.text(
-        avg_line_x,                     # X 위치: axvline과 동일한 x 좌표
-        0,                              # Y 위치: get_xaxis_transform 기준 axes 하단
-        avg_label_text,
-        ha="center",
-        va="top",
-        fontsize=6,
-        color="#888888",
-        zorder=6,
-        bbox=dict(
-            facecolor=(1.0, 1.0, 1.0, 0.5),
-            edgecolor="none",
-            pad=1.5,
-            boxstyle="round,pad=0.2",
-        ),
-        transform=ax.get_xaxis_transform(),
-    )
+        buf = io.StringIO()
+        fig.savefig(buf, format="svg")
+        plt.close(fig)
+        plt.rcParams["svg.fonttype"] = "path"
 
-    buf = io.StringIO()
-    fig.savefig(buf, format="svg")
-    plt.close(fig)
-    plt.rcParams["svg.fonttype"] = "path"
+        svg = buf.getvalue()
+        idx = svg.find("<svg")
+        chart_svg = svg[idx:] if idx != -1 else svg
 
-    svg = buf.getvalue()
-    idx = svg.find("<svg")
-    chart_svg = svg[idx:] if idx != -1 else svg
+        return {"cards": thumb_items, "chart_svg": chart_svg}
 
-    return {"cards": thumb_items, "chart_svg": chart_svg}
+
 
 def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any]) -> str:
     """타겟(연령×성별) 광고비 비중 버블 그리드 (히트맵 스타일)."""
@@ -1174,7 +1174,7 @@ def render_target_spend_bubble(dataset: Dict[str, Any], color_map: Dict[str, Any
 
             ax.text(j, -i, f"{ratio:.1f}%\n{int(cpc):,}원",
                     ha="center", va="center",
-                    fontsize=6, fontweight="bold", zorder=5,
+                    fontsize=5, fontweight="normal", zorder=5,
                     clip_on=False,  # 텍스트도 동일하게 클리핑 해제
             )
 
