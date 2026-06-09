@@ -505,12 +505,12 @@ def run():
     start_time = time.time()
 
     config = {
-        "target_id": "12", # account_id
-        "fb_ad_account_id":"act_1008886398030550",
-        "start":"2025-10-27",
-        "end": "2026-03-29",
-        "main_age": ["18-24", "25-34"],
-        "main_gender": "female", # male, female
+        "target_id": "", # account_id
+        "fb_ad_account_id":"",
+        "start":"",
+        "end": "",
+        "main_age": "",
+        "main_gender": "", # male, female
         "avoid_age": "",
         "avoid_gender": "",
         "currency": ""  # ""=원화, "dollar"=달러
